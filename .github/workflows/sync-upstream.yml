@@ -1,0 +1,100 @@
+name: Sync Upstream
+
+# 每 6 小时检查一次上游 nightingale 是否有新版本，有则自动更新子模块
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每 6 小时
+  workflow_dispatch:  # 手动触发
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: 同步上游版本
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout（含子模块）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 配置 Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 检查上游新版本
+        id: check
+        run: |
+          cd upstream
+          git fetch --tags
+          
+          # 获取当前锁定版本
+          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+          echo "当前锁定版本: ${CURRENT_TAG}"
+          
+          # 获取最新正式版 tag（排除 beta/rc/alpha）
+          LATEST_TAG=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "上游最新版本: ${LATEST_TAG}"
+          
+          if [[ "$CURRENT_TAG" == "$LATEST_TAG" ]]; then
+            echo "✅ 已是最新版本: ${CURRENT_TAG}"
+            echo "need_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "🔄 发现新版本: ${CURRENT_TAG} -> ${LATEST_TAG}"
+            echo "need_update=true" >> "$GITHUB_OUTPUT"
+            echo "current_tag=${CURRENT_TAG}" >> "$GITHUB_OUTPUT"
+            echo "latest_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 更新子模块到最新 tag
+        if: steps.check.outputs.need_update == 'true'
+        run: |
+          cd upstream
+          git checkout "${{ steps.check.outputs.latest_tag }}"
+          cd ..
+          git add upstream
+          git commit -m "chore: 升级 upstream 到 ${{ steps.check.outputs.latest_tag }}"
+
+      - name: 同步依赖和 SQL
+        if: steps.check.outputs.need_update == 'true'
+        run: |
+          bash scripts/gomod-sync.sh
+          bash scripts/sync-sql.sh
+          git add -A
+          git commit -m "chore: 同步依赖和数据库 SQL" || echo "无需提交"
+
+      - name: 创建 Pull Request
+        if: steps.check.outputs.need_update == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: auto-sync-${{ steps.check.outputs.latest_tag }}
+          title: "⬆️ 升级上游到 ${{ steps.check.outputs.latest_tag }}"
+          body: |
+            ## 自动升级上游版本
+            
+            - **当前版本**: `${{ steps.check.outputs.current_tag }}`
+            - **目标版本**: `${{ steps.check.outputs.latest_tag }}`
+            - **上游仓库**: https://github.com/ccfos/nightingale
+            
+            ### 变更内容
+            
+            1. 升级 `upstream` 子模块到 `${{ steps.check.outputs.latest_tag }}`
+            2. 同步 go.mod 依赖（replace 指令与 upstream 保持一致）
+            3. 同步数据库初始化 SQL 到 sql/ 目录
+            
+            ### 验证清单
+            
+            - [ ] 编译通过（会自动运行 Release workflow）
+            - [ ] 事件聚合补丁适用于新版本（检查 upstream/alert/dispatch/dispatch.go 结构是否变化）
+            - [ ] 数据库 SQL 无破坏性变更
+            
+            合并后会自动触发 Release 构建新版本。
+          labels: |
+            dependencies
+            automated

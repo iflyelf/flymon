@@ -1,0 +1,52 @@
+# 构建产物
+bin/
+dist/
+*.tar.gz
+*.zip
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# 依赖缓存
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 配置文件（保留 example）
+etc/*.toml
+etc/*.yaml
+etc/*.yml
+etc/*.conf
+!etc/*.example.*
+
+# 数据库
+*.db
+*.sql.gz
+
+# 日志
+logs/
+*.log
+nohup.out
+
+# 临时文件
+tmp/
+temp/
+.tmp/
+
+# 上游补丁备份
+*.bak
+upstream/alert/dispatch/dispatch.go.bak

@@ -1,0 +1,105 @@
+name: Release
+
+# 触发条件：
+#   1. 推送 tag（v*）时构建发布
+#   2. 手动触发（可指定要对齐的上游版本）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: '要对齐的上游 nightingale 版本 tag（如 v9.0.0），留空则使用当前子模块版本'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout（含子模块）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: 对齐上游版本（如指定）
+        if: ${{ github.event.inputs.upstream_tag != '' }}
+        run: |
+          cd upstream
+          git fetch --tags
+          git checkout "${{ github.event.inputs.upstream_tag }}"
+          cd ..
+
+      - name: 读取上游版本号
+        id: version
+        run: |
+          cd upstream
+          UPSTREAM_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+          cd ..
+          echo "upstream_tag=${UPSTREAM_TAG}" >> "$GITHUB_OUTPUT"
+          echo "flymon_version=${UPSTREAM_TAG}-flymon" >> "$GITHUB_OUTPUT"
+          echo "对齐上游版本: ${UPSTREAM_TAG}"
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: 应用事件聚合补丁
+        run: |
+          python3 apply-aggregation-patch.py upstream/alert/dispatch/dispatch.go
+
+      - name: 同步数据库 SQL
+        run: bash scripts/sync-sql.sh
+
+      - name: 交叉编译（CGO_ENABLED=0 静态链接）
+        env:
+          PLATFORMS: "linux/amd64 linux/arm64"
+        run: bash scripts/build.sh
+
+      - name: 打包发布产物
+        run: |
+          cd dist
+          VERSION="${{ steps.version.outputs.flymon_version }}"
+          for platform in linux-amd64 linux-arm64; do
+            mkdir -p "flymon-${VERSION}-${platform}"
+            cp "flymon-${platform}" "flymon-${VERSION}-${platform}/flymon"
+            cp "flymon-edge-${platform}" "flymon-${VERSION}-${platform}/flymon-edge"
+            cp "flymon-pushgw-${platform}" "flymon-${VERSION}-${platform}/flymon-pushgw"
+            cp -r ../sql "flymon-${VERSION}-${platform}/sql"
+            cp ../etc/*.example.* "flymon-${VERSION}-${platform}/" 2>/dev/null || true
+            tar czf "flymon-${VERSION}-${platform}.tar.gz" "flymon-${VERSION}-${platform}"
+          done
+          sha256sum *.tar.gz > checksums.txt
+          ls -lh
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || steps.version.outputs.flymon_version }}
+          name: ${{ steps.version.outputs.flymon_version }}
+          body: |
+            ## Flymon ${{ steps.version.outputs.flymon_version }}
+
+            基于夜莺 nightingale **${{ steps.version.outputs.upstream_tag }}** 构建，go-zero 架构包装层，内置事件聚合功能。
+
+            ### 产物
+            - `flymon` - 中心服务（对应 n9e）
+            - `flymon-edge` - 边缘节点（对应 n9e-edge）
+            - `flymon-pushgw` - 数据推送网关（对应 n9e-pushgw）
+
+            ### 平台
+            - linux/amd64
+            - linux/arm64
+
+            全部为 CGO_ENABLED=0 静态链接二进制，开箱即用。
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
