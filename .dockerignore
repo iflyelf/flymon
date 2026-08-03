@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+.gitmodules
+.github
+
+# Build artifacts
+bin/
+dist/
+*.tar.gz
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+README.md
+*.md
+doc/
+docs/
+
+# CI/CD (除了需要的文件)
+.github/*
+!.github/workflows/docker-publish.yml
+
+# Test files
+*_test.go
+testdata/
+
+# Upstream 的不必要文件（保留源码、配置和 docker/initsql —— fe.sh 依赖）
+upstream/.git
+upstream/.github
+upstream/doc
+upstream/.gitignore
+upstream/.goreleaser.yaml
+upstream/.typos.toml
+upstream/README.md
+upstream/README_zh.md
+
+# Local development
+.env
+.env.*
+*.log
