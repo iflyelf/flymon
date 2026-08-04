@@ -3,6 +3,11 @@ bin/
 dist/
 *.tar.gz
 *.zip
+# 根目录编译产物（go build 默认输出）
+/flymon
+/flymon-edge
+/flymon-gateway
+/flymon-pushgw
 
 # Go
 *.exe

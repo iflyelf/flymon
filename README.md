@@ -174,12 +174,29 @@ ls -lh bin/
 
 ### 升级上游版本
 
+**自动升级（推荐）**: GitHub Actions 每 6 小时检查一次官方新版本，发现后自动创建 PR。
+
+**手动升级**: 若需手动升级到指定版本（如 v9.1.0），在 upstream fork 的 `flymon-custom` 分支上执行：
+
 ```bash
 cd upstream
-git fetch --tags
-git checkout v9.1.0  # 指定官方新版本
+git checkout flymon-custom
+
+# 添加官方仓库并拉取新 tag
+git remote add ccfos https://github.com/ccfos/nightingale.git 2>/dev/null || \
+  git remote set-url ccfos https://github.com/ccfos/nightingale.git
+git fetch ccfos --tags
+
+# 关键：用 merge 而非 checkout，保留定制代码
+git merge v9.1.0  # ← 官方新版本，定制代码会被保留
+
+# 解决冲突（若有），然后推送
+git push origin flymon-custom
+
+# 回到主仓库，更新子模块指针和基线 tag
 cd ..
-git add upstream
+echo "v9.1.0" > .upstream-base-tag
+git add upstream .upstream-base-tag
 
 # 同步依赖和 SQL
 bash scripts/gomod-sync.sh
@@ -188,6 +205,8 @@ bash scripts/sync-sql.sh
 # 验证编译
 bash scripts/build.sh
 ```
+
+**重要**：绝不能用 `git checkout <tag>` 切换 upstream，这会丢失所有定制代码（聚合引擎/内置媒介等 2347 行）。必须用 `git merge <tag>` 合并新版本。
 
 ## 架构设计
 

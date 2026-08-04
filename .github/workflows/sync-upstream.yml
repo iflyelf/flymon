@@ -31,16 +31,23 @@ jobs:
         id: check
         run: |
           cd upstream
-          git fetch --tags
-          
-          # 获取当前锁定版本
-          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
-          echo "当前锁定版本: ${CURRENT_TAG}"
-          
-          # 获取最新正式版 tag（排除 beta/rc/alpha）
+
+          # upstream 子模块的 origin 指向 flymon 维护的 fork（iflyelf/nightingale），
+          # 定制代码在 flymon-custom 分支上。官方新 tag 需从官方仓库拉取，
+          # 故显式添加官方仓库为 ccfos remote。
+          git remote add ccfos https://github.com/ccfos/nightingale.git 2>/dev/null || \
+            git remote set-url ccfos https://github.com/ccfos/nightingale.git
+          git fetch ccfos --tags
+          git fetch origin flymon-custom
+
+          # 当前定制分支基于哪个官方 tag（读取 flymon 记录的基线 tag 文件）
+          CURRENT_TAG=$(cat ../.upstream-base-tag 2>/dev/null || echo "unknown")
+          echo "当前定制基线版本: ${CURRENT_TAG}"
+
+          # 获取官方最新正式版 tag（排除 beta/rc/alpha）
           LATEST_TAG=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           echo "上游最新版本: ${LATEST_TAG}"
-          
+
           if [[ "$CURRENT_TAG" == "$LATEST_TAG" ]]; then
             echo "✅ 已是最新版本: ${CURRENT_TAG}"
             echo "need_update=false" >> "$GITHUB_OUTPUT"
@@ -51,48 +58,83 @@ jobs:
             echo "latest_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 更新子模块到最新 tag
+      - name: 合并官方新版本到定制分支（保留定制代码）
+        id: merge
         if: steps.check.outputs.need_update == 'true'
         run: |
           cd upstream
-          git checkout "${{ steps.check.outputs.latest_tag }}"
-          cd ..
-          git add upstream
-          git commit -m "chore: 升级 upstream 到 ${{ steps.check.outputs.latest_tag }}"
+          # 确保在定制分支上
+          git checkout flymon-custom
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 关键：用 merge 合并官方新 tag 到定制分支，而非 checkout 切换。
+          # 这样官方新代码与 flymon 定制代码(聚合引擎/内置媒介/聚合屏蔽等)同时保留。
+          if git merge --no-edit "${{ steps.check.outputs.latest_tag }}"; then
+            echo "✅ 合并成功，无冲突"
+            echo "has_conflict=false" >> "$GITHUB_OUTPUT"
+            # 推送定制分支到 fork
+            git push origin flymon-custom
+          else
+            echo "⚠️ 合并存在冲突，需人工介入"
+            echo "has_conflict=true" >> "$GITHUB_OUTPUT"
+            # 保留冲突现场供 PR 展示冲突文件
+            git merge --abort || true
+          fi
+
+      - name: 更新主仓库子模块指针与基线 tag
+        if: steps.check.outputs.need_update == 'true' && steps.merge.outputs.has_conflict == 'false'
+        run: |
+          echo "${{ steps.check.outputs.latest_tag }}" > .upstream-base-tag
+          git add upstream .upstream-base-tag
+          git commit -m "chore: 升级 upstream 到 ${{ steps.check.outputs.latest_tag }}（合并保留定制代码）"
 
       - name: 同步依赖和 SQL
-        if: steps.check.outputs.need_update == 'true'
+        if: steps.check.outputs.need_update == 'true' && steps.merge.outputs.has_conflict == 'false'
         run: |
           bash scripts/gomod-sync.sh
           bash scripts/sync-sql.sh
           git add -A
           git commit -m "chore: 同步依赖和数据库 SQL" || echo "无需提交"
 
+      - name: 冲突提示（人工介入）
+        if: steps.check.outputs.need_update == 'true' && steps.merge.outputs.has_conflict == 'true'
+        run: |
+          echo "::warning::升级 ${{ steps.check.outputs.latest_tag }} 存在合并冲突，需在 upstream fork 的 flymon-custom 分支手动 merge 后再推送。"
+          echo "手动步骤："
+          echo "  cd upstream && git checkout flymon-custom"
+          echo "  git merge ${{ steps.check.outputs.latest_tag }}"
+          echo "  # 解决冲突后 git commit && git push origin flymon-custom"
+          exit 1
+
       - name: 创建 Pull Request
-        if: steps.check.outputs.need_update == 'true'
+        if: steps.check.outputs.need_update == 'true' && steps.merge.outputs.has_conflict == 'false'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: auto-sync-${{ steps.check.outputs.latest_tag }}
           title: "⬆️ 升级上游到 ${{ steps.check.outputs.latest_tag }}"
           body: |
-            ## 自动升级上游版本
+            ## 自动升级上游版本（合并保留定制代码）
             
-            - **当前版本**: `${{ steps.check.outputs.current_tag }}`
+            - **当前基线**: `${{ steps.check.outputs.current_tag }}`
             - **目标版本**: `${{ steps.check.outputs.latest_tag }}`
             - **上游仓库**: https://github.com/ccfos/nightingale
             
             ### 变更内容
             
-            1. 升级 `upstream` 子模块到 `${{ steps.check.outputs.latest_tag }}`
-            2. 同步 go.mod 依赖（replace 指令与 upstream 保持一致）
-            3. 同步数据库初始化 SQL 到 sql/ 目录
+            1. upstream fork 的 `flymon-custom` 分支已通过 `git merge` 合并官方 `${{ steps.check.outputs.latest_tag }}` tag
+            2. flymon 定制代码（聚合引擎/内置媒介/聚合屏蔽等 2347 行）**已保留**
+            3. 主仓库子模块指针更新到合并后的 commit
+            4. 同步 go.mod 依赖（replace 指令与 upstream 保持一致）
+            5. 同步数据库初始化 SQL 到 sql/ 目录
             
             ### 验证清单
             
             - [ ] 编译通过（会自动运行 Release workflow）
-            - [ ] 事件聚合补丁适用于新版本（检查 upstream/alert/dispatch/dispatch.go 结构是否变化）
-            - [ ] 数据库 SQL 无破坏性变更
+            - [ ] 事件聚合补丁与新版本兼容（检查 upstream/alert/dispatch/dispatch.go 结构是否变化）
+            - [ ] 数据库迁移无破坏性变更
+            - [ ] 聚合告警/内置媒介/Gateway 回调功能正常
             
             合并后会自动触发 Release 构建新版本。
           labels: |
