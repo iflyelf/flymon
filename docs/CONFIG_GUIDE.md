@@ -99,6 +99,43 @@ REDIS_PASSWORD=xxx
 |---------|--------|------|
 | `FEISHU_DOMAIN` | `open.feishu.cn` | 飞书 OpenAPI 域名（私有部署改为自定义域名） |
 
+### 1.4b 其他可选配置（高级）
+
+#### Token 存储 TTL
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `MUTE_TOKEN_TTL` | `2592000`（30天） | 屏蔽 token 过期时间（秒），用于飞书卡片"快捷屏蔽"按钮 |
+| `AI_TOKEN_TTL` | `2592000`（30天） | AI 分析 token 过期时间（秒），用于"AI 分析"按钮回调 |
+| `GROUP_CHAT_TOKEN_TTL` | `2592000`（30天） | 协同群 token 过期时间（秒），用于"拉群讨论"按钮 |
+
+> **Redis 模式**：token 写入时带 TTL，到期 Redis 自动删除；**file 模式**：后台每 1 小时扫描删除过期文件。
+
+#### API 超时与重试
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `API_TIMEOUT` | `10` | N9E API 请求总超时（秒） |
+| `API_CONNECT_TIMEOUT` | `5` | N9E API 连接超时（秒） |
+| `RETRY_MAX_ATTEMPTS` | `3` | 重试最大次数 |
+| `RETRY_DELAY_BASE` | `2` | 重试基础延迟（秒），指数退避起点 |
+| `RETRY_DELAY_MAX` | `10` | 重试最大延迟（秒） |
+| `RETRY_BACKOFF_FACTOR` | `2` | 重试退避因子（每次重试延迟乘以该因子） |
+
+#### 日志与调试
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `LOG_LEVEL` | `INFO` | 日志级别：`DEBUG`、`INFO`、`WARNING`、`ERROR` |
+| `DEFAULT_ADMIN_EMAIL` | 空 | 协同群默认管理员邮箱（可选，用于"拉群讨论"时自动加管理员） |
+
+#### Docker 容器环境变量
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `TZ` | `UTC` | 容器时区（如 `Asia/Shanghai`） |
+| `WAIT_FOR` | 空 | 启动前等待的依赖服务（空格分隔，如 `mysql:3306 redis:6379`） |
+
 ### 1.5 示例：docker-compose.yml
 
 ```yaml
@@ -412,6 +449,62 @@ sudo journalctl -u flymon-gateway -f   # 查看日志
   - 检查数据库是否已创建（如 `CREATE DATABASE n9e_v6 CHARACTER SET utf8mb4`）
   - 查看启动日志中 `migrate` 相关报错，确认连接权限和字符集
   - 若需手动导入，使用 `sql/mysql-schema.sql` + `sql/flymon-schema.sql`
+
+---
+
+## 📋 六、环境变量完整速查表
+
+Gateway 服务共支持 **34 个环境变量**，按功能分类如下（已按字母排序）：
+
+| 环境变量 | 默认值 | 必填 | 说明 |
+|---------|--------|------|------|
+| **基础服务** |
+| `LISTEN_HOST` | `0.0.0.0` | 否 | Gateway 监听 IP |
+| `LISTEN_PORT` | `5000` | 否 | Gateway 监听端口 |
+| `LOG_LEVEL` | `INFO` | 否 | 日志级别（DEBUG/INFO/WARNING/ERROR） |
+| `N9E_API_URL` | 无 | **是** | 夜莺 API 地址 |
+| `N9E_API_TOKEN` | 无 | **是** | 夜莺 API 认证 Token |
+| **Token 存储** |
+| `DATA_DIR` | `/data/gateway` | 否 | file 模式持久化目录 |
+| `TOKEN_STORE_TYPE` | `file` | 否 | Token 存储类型（file/redis） |
+| `MUTE_TOKEN_TTL` | `2592000`（30天） | 否 | 屏蔽 token 过期时间（秒） |
+| `AI_TOKEN_TTL` | `2592000`（30天） | 否 | AI 分析 token 过期时间（秒） |
+| `GROUP_CHAT_TOKEN_TTL` | `2592000`（30天） | 否 | 协同群 token 过期时间（秒） |
+| **Redis（TokenStore=redis 时）** |
+| `REDIS_MODE` | `standalone` | 否 | Redis 模式（standalone/sentinel/cluster） |
+| `REDIS_ADDR` | 无 | 条件必填 | Redis 地址，集群/哨兵填多个逗号分隔 |
+| `REDIS_USERNAME` | 无 | 否 | Redis ACL 用户名 |
+| `REDIS_PASSWORD` | 无 | 否 | Redis 密码 |
+| `REDIS_DB` | `0` | 否 | Redis 数据库编号（集群忽略） |
+| `REDIS_PREFIX` | `n9e_gateway` | 否 | Redis 键前缀 |
+| `REDIS_MASTER_NAME` | 无 | 条件必填 | 哨兵 master 名称（sentinel 必填） |
+| **AI 分析** |
+| `OPENCLAW_ENABLED` | `false` | 否 | 是否启用 OpenClaw AI |
+| `OPENCLAW_API_URL` | 无 | 条件必填 | OpenClaw API 地址（启用时必填） |
+| `OPENCLAW_API_TOKEN` | 无 | 条件必填 | OpenClaw API Token（启用时必填） |
+| `OPENCLAW_MODEL` | `openclaw/default` | 否 | OpenClaw 模型名称 |
+| `IFLYELF_ENABLED` | `false` | 否 | 是否启用 iflyelf AI |
+| `IFLYELF_API_URL` | 无 | 条件必填 | iflyelf API 地址（启用时必填） |
+| `IFLYELF_API_TOKEN` | 无 | 条件必填 | iflyelf API Token（启用时必填） |
+| `IFLYELF_MODEL` | `auto` | 否 | iflyelf 模型名称 |
+| `AI_PROVIDER_STRATEGY` | `openclaw_first` | 否 | AI 调度策略 |
+| `AI_TIMEOUT` | `300` | 否 | AI 请求超时（秒） |
+| `AI_MAX_TOKENS` | `1500` | 否 | AI 最大生成 token 数 |
+| **API 与重试** |
+| `API_TIMEOUT` | `10` | 否 | N9E API 请求总超时（秒） |
+| `API_CONNECT_TIMEOUT` | `5` | 否 | N9E API 连接超时（秒） |
+| `RETRY_MAX_ATTEMPTS` | `3` | 否 | 重试最大次数 |
+| `RETRY_DELAY_BASE` | `2` | 否 | 重试基础延迟（秒） |
+| `RETRY_DELAY_MAX` | `10` | 否 | 重试最大延迟（秒） |
+| `RETRY_BACKOFF_FACTOR` | `2` | 否 | 重试退避因子 |
+| **飞书与其他** |
+| `FEISHU_DOMAIN` | `open.feishu.cn` | 否 | 飞书 OpenAPI 域名 |
+| `DEFAULT_ADMIN_EMAIL` | 无 | 否 | 协同群默认管理员邮箱 |
+
+> **注**：
+> - "条件必填"指特定场景下必填（如 `REDIS_ADDR` 在 `TOKEN_STORE_TYPE=redis` 时必填）
+> - `TZ`/`WAIT_FOR` 为 Docker entrypoint 变量，非 Gateway 代码读取
+> - 生产环境建议用 systemd `EnvironmentFile=` 隔离敏感 Token（chmod 600）
 
 ---
 
