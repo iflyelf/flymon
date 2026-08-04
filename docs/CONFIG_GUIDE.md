@@ -29,13 +29,39 @@
 
 #### Redis Token 存储（多副本场景）
 
+支持**单机(standalone)、哨兵(sentinel)、集群(cluster)** 三种模式。
+
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
-| `REDIS_ADDR` | 空 | Redis 地址（`host:port`），`TOKEN_STORE_TYPE=redis` 时必填 |
-| `REDIS_USERNAME` | 空 | Redis 用户名 |
+| `REDIS_MODE` | `standalone` | 模式：`standalone`(单机) / `sentinel`(哨兵) / `cluster`(集群) |
+| `REDIS_ADDR` | 空 | 地址，`TOKEN_STORE_TYPE=redis` 时必填。单机填 `host:port`；哨兵/集群填多地址逗号分隔 `h1:p1,h2:p2,h3:p3` |
+| `REDIS_USERNAME` | 空 | Redis 用户名（ACL） |
 | `REDIS_PASSWORD` | 空 | Redis 密码 |
-| `REDIS_DB` | `0` | Redis 数据库编号 |
+| `REDIS_DB` | `0` | 数据库编号（**集群模式忽略**，集群不支持多 DB） |
 | `REDIS_PREFIX` | `n9e_gateway` | 键前缀 |
+| `REDIS_MASTER_NAME` | 空 | 哨兵 master 名称，`REDIS_MODE=sentinel` 时必填 |
+
+**三种模式配置示例**：
+
+```bash
+# 单机
+REDIS_MODE=standalone
+REDIS_ADDR=127.0.0.1:6379
+REDIS_PASSWORD=xxx
+
+# 哨兵（Addr 填哨兵节点，MasterName 必填）
+REDIS_MODE=sentinel
+REDIS_ADDR=10.0.0.1:26379,10.0.0.2:26379,10.0.0.3:26379
+REDIS_MASTER_NAME=mymaster
+REDIS_PASSWORD=xxx
+
+# 集群（Addr 填集群任意节点，DB 被忽略）
+REDIS_MODE=cluster
+REDIS_ADDR=10.0.0.1:7000,10.0.0.2:7000,10.0.0.3:7000
+REDIS_PASSWORD=xxx
+```
+
+> 实现基于 go-redis 的 `UniversalClient`，token 键使用 `{prefix}:{category}:{token}` 格式并带 TTL 自动过期，集群模式下 key 会按 CRC16 分片到不同槽位，功能不受影响。
 
 ### 1.3 AI 智能分析（可选）
 

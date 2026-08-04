@@ -69,11 +69,14 @@ type Config struct {
 	TokenStoreType string
 
 	// Redis 连接（TokenStoreType=redis 时使用）
-	RedisAddr     string
-	RedisUsername string
-	RedisPassword string
-	RedisDB       int
-	RedisPrefix   string
+	// RedisMode: standalone(单机,默认) | cluster(集群) | sentinel(哨兵)
+	RedisMode       string
+	RedisAddr       string // 单机: host:port; 集群/哨兵: 多地址逗号分隔 host1:port1,host2:port2
+	RedisUsername   string
+	RedisPassword   string
+	RedisDB         int    // 集群模式忽略该字段(集群不支持多 DB)
+	RedisPrefix     string
+	RedisMasterName string // 哨兵模式必填: master 名称
 }
 
 func getenv(key, def string) string {
@@ -162,11 +165,13 @@ func LoadConfig() *Config {
 
 		TokenStoreType: getenv("TOKEN_STORE_TYPE", "file"),
 
-		RedisAddr:     getenv("REDIS_ADDR", ""),
-		RedisUsername: getenv("REDIS_USERNAME", ""),
-		RedisPassword: getenv("REDIS_PASSWORD", ""),
-		RedisDB:       getenvInt("REDIS_DB", 0),
-		RedisPrefix:   getenv("REDIS_PREFIX", "n9e_gateway"),
+		RedisMode:       getenv("REDIS_MODE", "standalone"),
+		RedisAddr:       getenv("REDIS_ADDR", ""),
+		RedisUsername:   getenv("REDIS_USERNAME", ""),
+		RedisPassword:   getenv("REDIS_PASSWORD", ""),
+		RedisDB:         getenvInt("REDIS_DB", 0),
+		RedisPrefix:     getenv("REDIS_PREFIX", "n9e_gateway"),
+		RedisMasterName: getenv("REDIS_MASTER_NAME", ""),
 	}
 }
 
@@ -185,8 +190,13 @@ func (c *Config) Validate() error {
 	if c.IflyelfEnabled && (c.IflyelfAPIURL == "" || c.IflyelfAPIToken == "") {
 		missing = append(missing, "IFLYELF_API_URL/IFLYELF_API_TOKEN(IFLYELF_ENABLED=true 时必填)")
 	}
-	if c.TokenStoreType == "redis" && c.RedisAddr == "" {
-		missing = append(missing, "REDIS_ADDR(TOKEN_STORE_TYPE=redis 时必填)")
+	if c.TokenStoreType == "redis" {
+		if c.RedisAddr == "" {
+			missing = append(missing, "REDIS_ADDR(TOKEN_STORE_TYPE=redis 时必填)")
+		}
+		if c.RedisMode == "sentinel" && c.RedisMasterName == "" {
+			missing = append(missing, "REDIS_MASTER_NAME(REDIS_MODE=sentinel 时必填)")
+		}
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("缺少必填环境变量: %s", strings.Join(missing, ", "))

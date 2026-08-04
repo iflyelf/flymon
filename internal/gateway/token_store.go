@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -189,13 +190,14 @@ func (ts *FileTokenStore) GC() {
 // RedisTokenStore 使用 Redis 存储 token，天然支持多副本共享与自动过期。
 // 键格式: {prefix}:{token}，value 为 data 的 JSON 序列化。
 type RedisTokenStore struct {
-	client *redis.Client
+	client redis.UniversalClient
 	prefix string
 	ttl    time.Duration
 }
 
 // NewRedisTokenStore 创建 Redis token 存储实例。
-func NewRedisTokenStore(client *redis.Client, prefix string, ttlSeconds int64) *RedisTokenStore {
+// client 为 redis.UniversalClient，兼容单机/哨兵/集群三种模式。
+func NewRedisTokenStore(client redis.UniversalClient, prefix string, ttlSeconds int64) *RedisTokenStore {
 	return &RedisTokenStore{
 		client: client,
 		prefix: prefix,
@@ -298,22 +300,51 @@ func InitTokenStores(cfg *Config) error {
 		if cfg.RedisAddr == "" {
 			logger.Warning("TOKEN_STORE_TYPE=redis 但 REDIS_ADDR 为空，降级到 file")
 		} else {
-			client := redis.NewClient(&redis.Options{
-				Addr:     cfg.RedisAddr,
+			// 解析多地址（逗号分隔，用于集群/哨兵）
+			addrs := strings.Split(cfg.RedisAddr, ",")
+			for i := range addrs {
+				addrs[i] = strings.TrimSpace(addrs[i])
+			}
+
+			// UniversalOptions 兼容单机/哨兵/集群三种模式
+			opts := &redis.UniversalOptions{
+				Addrs:    addrs,
 				Username: cfg.RedisUsername,
 				Password: cfg.RedisPassword,
 				DB:       cfg.RedisDB,
-			})
+			}
+
+			// 根据显式 RedisMode 创建对应客户端，避免 NewUniversalClient
+			// 在单种子地址集群场景下误判为单机。
+			var client redis.UniversalClient
+			switch strings.ToLower(cfg.RedisMode) {
+			case "cluster":
+				// 集群模式：即使只给单个种子地址也强制走 ClusterClient。DB 被忽略。
+				client = redis.NewClusterClient(opts.Cluster())
+				logger.Infof("Redis Cluster 模式: addrs=%v", addrs)
+			case "sentinel":
+				// 哨兵模式：Addrs 为哨兵节点，MasterName 必填
+				opts.MasterName = cfg.RedisMasterName
+				client = redis.NewFailoverClient(opts.Failover())
+				logger.Infof("Redis Sentinel 模式: sentinels=%v, master=%s", addrs, cfg.RedisMasterName)
+			default:
+				// standalone：单机模式，仅用第一个地址
+				if len(addrs) > 1 {
+					logger.Warningf("REDIS_MODE=%s 但 REDIS_ADDR 有多个地址，仅使用第一个: %s", cfg.RedisMode, addrs[0])
+				}
+				client = redis.NewClient(opts.Simple())
+				logger.Infof("Redis Standalone 模式: addr=%s", addrs[0])
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := client.Ping(ctx).Err(); err != nil {
-				return fmt.Errorf("redis 连接失败(addr=%s): %w", cfg.RedisAddr, err)
+				return fmt.Errorf("redis 连接失败(mode=%s, addrs=%v): %w", cfg.RedisMode, addrs, err)
 			}
 
 			muteTokenStore = NewRedisTokenStore(client, cfg.RedisPrefix+":mute", cfg.MuteTokenTTL)
 			aiTokenStore = NewRedisTokenStore(client, cfg.RedisPrefix+":ai", cfg.AITokenTTL)
 			groupChatTokenStore = NewRedisTokenStore(client, cfg.RedisPrefix+":groupchat", cfg.GroupChatTokenTTL)
-			logger.Infof("使用 RedisTokenStore: addr=%s, db=%d, prefix=%s", cfg.RedisAddr, cfg.RedisDB, cfg.RedisPrefix)
+			logger.Infof("RedisTokenStore 初始化成功: mode=%s, db=%d, prefix=%s", cfg.RedisMode, cfg.RedisDB, cfg.RedisPrefix)
 			return nil
 		}
 	}
