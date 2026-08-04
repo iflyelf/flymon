@@ -28,10 +28,13 @@ import (
 //   5. 注册路由并启动 HTTP Server 监听
 //   6. 返回 cleanup 函数（优雅关闭 HTTP Server）
 func Initialize(configDir string, cryptoKey string) (func(), error) {
-	// 1. 加载配置
+	// 1. 加载配置并校验必填项
 	cfg := LoadConfig()
-	logger.Infof("gateway 配置加载完成: listen=%s:%d, n9e_url=%s, ai_strategy=%s, data_dir=%s",
-		cfg.ListenHost, cfg.ListenPort, cfg.N9EAPIURL, cfg.AIProviderStrategy, cfg.DataDir)
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("gateway 配置校验失败: %w", err)
+	}
+	logger.Infof("gateway 配置加载完成: listen=%s:%d, n9e_url=%s, ai_strategy=%s, data_dir=%s, token_store=%s",
+		cfg.ListenHost, cfg.ListenPort, cfg.N9EAPIURL, cfg.AIProviderStrategy, cfg.DataDir, cfg.TokenStoreType)
 
 	// 2. 初始化 token 存储
 	if err := InitTokenStores(cfg); err != nil {

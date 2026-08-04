@@ -19,6 +19,7 @@ require (
 	github.com/ccfos/nightingale/v6 v6.7.3
 	github.com/flashcatcloud/ibex v1.3.9
 	github.com/gin-gonic/gin v1.9.1
+	github.com/redis/go-redis/v9 v9.19.0
 	github.com/toolkits/pkg v1.3.11
 	github.com/zeromicro/go-zero v1.10.2
 )
@@ -162,7 +163,6 @@ require (
 	github.com/prometheus/prometheus v0.47.1 // indirect
 	github.com/rakyll/statik v0.1.7 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/redis/go-redis/v9 v9.19.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/toolkits/pkg/logger"
 )
 
@@ -181,41 +183,105 @@ func (ts *FileTokenStore) GC() {
 }
 
 // ============================================================================
-// RedisTokenStore - Redis 存储实现（TODO: 待实现）
+// RedisTokenStore - Redis 存储实现（多副本共享，键自动过期）
 // ============================================================================
 
-// RedisTokenStore Redis 存储实现（暂未实现，需要 redis.Client 注入）
+// RedisTokenStore 使用 Redis 存储 token，天然支持多副本共享与自动过期。
+// 键格式: {prefix}:{token}，value 为 data 的 JSON 序列化。
 type RedisTokenStore struct {
-	// client *redis.Client
+	client *redis.Client
 	prefix string
-	ttl    int64
+	ttl    time.Duration
 }
 
-// NewRedisTokenStore 创建 Redis token 存储实例
-func NewRedisTokenStore(prefix string, ttl int64) (*RedisTokenStore, error) {
-	// TODO: 需要从外部注入 redis.Client
-	logger.Warning("RedisTokenStore 暂未实现，降级到 FileTokenStore")
-	return nil, fmt.Errorf("RedisTokenStore 未实现")
+// NewRedisTokenStore 创建 Redis token 存储实例。
+func NewRedisTokenStore(client *redis.Client, prefix string, ttlSeconds int64) *RedisTokenStore {
+	return &RedisTokenStore{
+		client: client,
+		prefix: prefix,
+		ttl:    time.Duration(ttlSeconds) * time.Second,
+	}
 }
 
+func (r *RedisTokenStore) key(token string) string {
+	return r.prefix + ":" + token
+}
+
+// GenToken 生成 token 并写入 Redis（带 TTL 自动过期）。
 func (r *RedisTokenStore) GenToken(prefix string, data map[string]interface{}) string {
-	// TODO: 实现 Redis SET
-	return ""
+	buf := make([]byte, 6)
+	rand.Read(buf)
+	token := prefix + "_" + hex.EncodeToString(buf)
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		logger.Errorf("redis token 序列化失败: token=%s, error=%v", token, err)
+		return token
+	}
+
+	ctx := context.Background()
+	if err := r.client.Set(ctx, r.key(token), payload, r.ttl).Err(); err != nil {
+		logger.Errorf("redis token 写入失败: token=%s, error=%v", token, err)
+	}
+	return token
 }
 
+// Load 从 Redis 读取 token 数据；不存在或过期返回 nil。
 func (r *RedisTokenStore) Load(token string) map[string]interface{} {
-	// TODO: 实现 Redis GET
-	return nil
+	ctx := context.Background()
+	val, err := r.client.Get(ctx, r.key(token)).Bytes()
+	if err != nil {
+		if err != redis.Nil {
+			logger.Warningf("redis token 读取失败: token=%s, error=%v", token, err)
+		}
+		return nil
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(val, &data); err != nil {
+		logger.Warningf("redis token JSON 解析失败: token=%s, error=%v", token, err)
+		return nil
+	}
+	return data
 }
 
+// Update 更新 token 中的字段（保留剩余 TTL）。
 func (r *RedisTokenStore) Update(token string, patch map[string]interface{}) bool {
-	// TODO: 实现 Redis UPDATE
-	return false
+	ctx := context.Background()
+	key := r.key(token)
+
+	val, err := r.client.Get(ctx, key).Bytes()
+	if err != nil {
+		return false
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(val, &data); err != nil {
+		return false
+	}
+	for k, v := range patch {
+		data[k] = v
+	}
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return false
+	}
+
+	// 保留剩余 TTL：KEEPTTL 需 Redis 6.0+，此处显式读取 TTL 后重设，兼容性更好
+	ttl, err := r.client.TTL(ctx, key).Result()
+	if err != nil || ttl <= 0 {
+		ttl = r.ttl
+	}
+	if err := r.client.Set(ctx, key, payload, ttl).Err(); err != nil {
+		logger.Errorf("redis token 更新失败: token=%s, error=%v", token, err)
+		return false
+	}
+	return true
 }
 
-func (r *RedisTokenStore) GC() {
-	// Redis 自动过期，无需手动 GC
-}
+// GC Redis 键自动过期，无需手动清理。
+func (r *RedisTokenStore) GC() {}
 
 // ============================================================================
 // 全局 token 存储
@@ -228,11 +294,28 @@ var (
 )
 
 func InitTokenStores(cfg *Config) error {
-	var err error
-
 	if cfg.TokenStoreType == "redis" {
-		// TODO: 当 Redis 可用时，创建 RedisTokenStore
-		logger.Warning("TokenStoreType=redis 暂不支持，降级到 file")
+		if cfg.RedisAddr == "" {
+			logger.Warning("TOKEN_STORE_TYPE=redis 但 REDIS_ADDR 为空，降级到 file")
+		} else {
+			client := redis.NewClient(&redis.Options{
+				Addr:     cfg.RedisAddr,
+				Username: cfg.RedisUsername,
+				Password: cfg.RedisPassword,
+				DB:       cfg.RedisDB,
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := client.Ping(ctx).Err(); err != nil {
+				return fmt.Errorf("redis 连接失败(addr=%s): %w", cfg.RedisAddr, err)
+			}
+
+			muteTokenStore = NewRedisTokenStore(client, cfg.RedisPrefix+":mute", cfg.MuteTokenTTL)
+			aiTokenStore = NewRedisTokenStore(client, cfg.RedisPrefix+":ai", cfg.AITokenTTL)
+			groupChatTokenStore = NewRedisTokenStore(client, cfg.RedisPrefix+":groupchat", cfg.GroupChatTokenTTL)
+			logger.Infof("使用 RedisTokenStore: addr=%s, db=%d, prefix=%s", cfg.RedisAddr, cfg.RedisDB, cfg.RedisPrefix)
+			return nil
+		}
 	}
 
 	// 使用 FileTokenStore
@@ -254,6 +337,7 @@ func InitTokenStores(cfg *Config) error {
 	}
 	groupChatTokenStore = gcStore
 
+	logger.Infof("使用 FileTokenStore: dir=%s", filepath.Join(cfg.DataDir, "tokens"))
 	return nil
 }
 
