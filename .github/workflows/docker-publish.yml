@@ -77,7 +77,7 @@ jobs:
           echo "🧪 测试事件聚合补丁..."
           python3 apply-aggregation-patch.py upstream/alert/dispatch/dispatch.go
           
-          if grep -q "AggregationKey" upstream/alert/dispatch/dispatch.go; then
+          if grep -q "AddToAggregation(eventCopy, notifyRuleId" upstream/alert/dispatch/dispatch.go; then
             echo "✅ 补丁测试成功"
           else
             echo "❌ 补丁测试失败"
@@ -150,7 +150,7 @@ jobs:
           echo "| Flymon 版本 | ${{ steps.meta.outputs.version }}-flymon |" >> $GITHUB_STEP_SUMMARY
           echo "| 镜像标签 | \`${{ steps.meta.outputs.tags }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| 平台 | linux/amd64, linux/arm64 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 功能特性 | ✅ go-zero 架构 + 事件聚合（60秒窗口） |" >> $GITHUB_STEP_SUMMARY
+          echo "| 功能特性 | ✅ go-zero 架构 + 动态聚合(可配置窗口) + 内置媒介 + Gateway回调 |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🎯 使用方式" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
