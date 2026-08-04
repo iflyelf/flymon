@@ -4,9 +4,12 @@
 
 ---
 
-## 📦 一、环境变量配置（容器启动前）
+## 📦 一、启动前配置（环境变量 / config.toml）
 
-这些配置通过环境变量或 `docker-compose.yml` 的 `environment` 传入，**服务启动时生效，运行中不可更改**。
+这些配置在服务**启动前**设置，**服务启动时生效，运行中不可更改**。
+
+- **容器部署**：通过 `docker-compose.yml` 的 `environment` 或 k8s `env` 传入环境变量（见 1.5）
+- **二进制部署**：主服务用 `etc/config.toml`，Gateway 用环境变量（见 1.6）
 
 ### 1.1 必填配置（缺失则启动报错）
 
@@ -100,6 +103,114 @@ services:
       - redis
       - mysql
 ```
+
+### 1.6 二进制方式启动（非容器）
+
+二进制部署下，配置分两部分：
+
+- **主服务**（`flymon` / `flymon-edge` / `flymon-pushgw`）：读取 `--configs` 指定目录下的 `config.toml`（数据库、Redis、监听端口等）。
+- **网关**（`flymon-gateway`）：**只读环境变量**，不读配置文件。`--configs` 参数虽保留（统一入口签名），但 Gateway 的所有配置项均来自环境变量。
+
+#### 主服务：config.toml
+
+配置文件格式与官方夜莺完全一致，参考 `upstream/etc/config.toml`。核心段：
+
+```toml
+[DB]
+# 数据库连接（DSN），启动时自动建表/迁移，无需手动导入 SQL
+DSN = "root:1234@tcp(127.0.0.1:3306)/n9e_v6?charset=utf8mb4&parseTime=True&loc=Local&allowNativePasswords=true"
+DBType = "mysql"
+
+[Redis]
+Address = "127.0.0.1:6379"
+# Username = ""
+# Password = ""
+RedisType = "standalone"
+
+[HTTP]
+Port = 17000   # 夜莺主端口
+```
+
+启动：
+
+```bash
+# 中心服务（含聚合引擎、内置媒介自动注册）
+./flymon --configs=etc
+
+# 边缘/推送网关按需
+./flymon-pushgw --configs=etc
+```
+
+> 注意：**聚合配置、内置媒介参数、聚合屏蔽都不写在 config.toml 里**，而是启动后在 Web 界面配置（见第二章）。config.toml 只负责数据库/Redis/端口等基础设施。
+
+#### 网关：环境变量方式（二进制）
+
+Gateway 不读文件，需在启动前 export 环境变量，或用 systemd 的 `Environment=` 注入：
+
+```bash
+# 方式一：export 后直接启动
+export N9E_API_URL="http://127.0.0.1:17000/api/n9e"
+export N9E_API_TOKEN="your-n9e-api-token"
+export LISTEN_PORT="5000"
+export TOKEN_STORE_TYPE="file"           # 单机；多副本用 redis
+export DATA_DIR="/opt/flymon/data/gateway"
+# AI（可选）
+export OPENCLAW_ENABLED="true"
+export OPENCLAW_API_URL="http://127.0.0.1:8790"
+export OPENCLAW_API_TOKEN="your-openclaw-token"
+
+./flymon-gateway --configs=etc     # --configs 会被忽略，配置全来自上面的环境变量
+
+# 方式二：单行前缀注入（临时测试）
+N9E_API_URL="http://127.0.0.1:17000/api/n9e" N9E_API_TOKEN="xxx" LISTEN_PORT=5000 ./flymon-gateway
+```
+
+#### systemd 部署 Gateway 示例
+
+`/etc/systemd/system/flymon-gateway.service`：
+
+```ini
+[Unit]
+Description=Flymon Gateway (飞书回调/AI分析/协同群)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/flymon
+ExecStart=/opt/flymon/flymon-gateway --configs=/opt/flymon/etc
+Restart=on-failure
+RestartSec=5
+
+# 配置全部通过环境变量注入（敏感值建议用 EnvironmentFile 从受限文件读取）
+Environment=N9E_API_URL=http://127.0.0.1:17000/api/n9e
+Environment=LISTEN_PORT=5000
+Environment=TOKEN_STORE_TYPE=redis
+Environment=REDIS_ADDR=127.0.0.1:6379
+# 敏感 Token 从独立文件读取（权限 600），避免明文写在 unit 里
+EnvironmentFile=-/opt/flymon/etc/gateway.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/opt/flymon/etc/gateway.env`（`chmod 600`，仅存放敏感值）：
+
+```env
+N9E_API_TOKEN=your-n9e-api-token
+REDIS_PASSWORD=your-redis-password
+OPENCLAW_API_TOKEN=your-openclaw-token
+IFLYELF_API_TOKEN=your-iflyelf-token
+```
+
+启用：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now flymon-gateway
+sudo journalctl -u flymon-gateway -f   # 查看日志
+```
+
+> 若启动报错 `gateway 配置校验失败: 缺少必填环境变量: N9E_API_URL, N9E_API_TOKEN`，说明必填项未设置，按提示补齐即可。
 
 ---
 
@@ -214,21 +325,29 @@ services:
 
 ## 🔄 三、配置生效时间对比
 
-| 配置类型 | 配置方式 | 生效时间 | 是否需重启 |
-|---------|---------|---------|-----------|
-| 环境变量（Gateway、AI、Redis） | docker-compose / k8s env | 容器重启后生效 | ✅ 需要 |
-| 聚合配置 | Web 界面 | 保存后立即生效（后台缓存 9 秒刷新） | ❌ 无需 |
-| 内置媒介参数 | Web 界面 | 保存后立即生效 | ❌ 无需 |
-| 聚合屏蔽 | Web 界面 | 保存后立即生效 | ❌ 无需 |
+| 配置类型 | 容器方式 | 二进制方式 | 生效时间 | 是否需重启 |
+|---------|---------|-----------|---------|-----------|
+| 环境变量（Gateway、AI、Redis） | docker-compose env | export / systemd Environment | 重启后生效 | ✅ 需要 |
+| config.toml（DB、HTTP 端口） | 不涉及（entrypoint 自动生成） | 手动编辑 etc/config.toml | 重启后生效 | ✅ 需要 |
+| 聚合配置 | Web 界面 | Web 界面 | 保存后立即生效（缓存 9 秒刷新） | ❌ 无需 |
+| 内置媒介参数 | Web 界面 | Web 界面 | 保存后立即生效 | ❌ 无需 |
+| 聚合屏蔽 | Web 界面 | Web 界面 | 保存后立即生效 | ❌ 无需 |
 
 ---
 
 ## 📌 四、快速配置检查清单
 
-### 启动前（环境变量）
-- [ ] `N9E_API_URL` 和 `N9E_API_TOKEN` 已设置
-- [ ] 多副本部署时配置 `TOKEN_STORE_TYPE=redis` 和 Redis 连接
+### 启动前
+
+#### 容器部署（docker-compose / k8s）
+- [ ] `environment:` 中设置 `N9E_API_URL` 和 `N9E_API_TOKEN`
+- [ ] 多副本时配置 `TOKEN_STORE_TYPE=redis` 及 Redis 连接参数
 - [ ] AI 功能需要时配置 `OPENCLAW_*` 或 `IFLYELF_*`
+
+#### 二进制部署
+- [ ] 主服务：编辑 `etc/config.toml`，配置 `[DB]` 和 `[Redis]` 段
+- [ ] Gateway：export 或 systemd `Environment=` 设置 `N9E_API_URL`、`N9E_API_TOKEN` 等
+- [ ] 敏感值（Token）建议用 systemd `EnvironmentFile=` 从 chmod 600 的文件读取
 
 ### 启动后（Web 界面）
 - [ ] 进入"通知媒介"，找到 5 个 `*_builtin` 媒介，配置参数（SMTP、飞书 App ID/Secret 等）
@@ -254,6 +373,19 @@ services:
 
 **Q5: 聚合不生效？**
 - A: 检查"聚合配置"是否启用、窗口是否合理（建议 30-300 秒）、绑定规则是否匹配实际触发的告警规则。查看日志中 `AggregationEngine` 相关输出。
+
+**Q6: 二进制启动后 Gateway 配置校验失败？**
+- A: 报错 `缺少必填环境变量: N9E_API_URL, N9E_API_TOKEN` 说明环境变量未正确注入。检查：
+  - systemd：`systemctl cat flymon-gateway` 确认 `Environment=` 和 `EnvironmentFile=` 是否正确
+  - 手动启动：`export` 后用 `env | grep N9E` 确认变量是否已设置
+  - 查看启动日志：`journalctl -u flymon-gateway -n 50` 确认报错详情
+
+**Q7: 二进制部署时数据库表未自动创建？**
+- A: flymon 启动时会自动执行 GORM AutoMigrate 建表。若失败：
+  - 检查 `config.toml` 中 `[DB].DSN` 是否正确（用户密码、主机、库名）
+  - 检查数据库是否已创建（如 `CREATE DATABASE n9e_v6 CHARACTER SET utf8mb4`）
+  - 查看启动日志中 `migrate` 相关报错，确认连接权限和字符集
+  - 若需手动导入，使用 `sql/mysql-schema.sql` + `sql/flymon-schema.sql`
 
 ---
 
