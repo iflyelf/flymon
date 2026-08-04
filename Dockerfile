@@ -265,12 +265,14 @@ RUN set -eux && \
     go build -ldflags "$LDFLAGS" -o flymon ./cmd/flymon && \
     go build -ldflags "$LDFLAGS" -o flymon-edge ./cmd/flymon-edge && \
     go build -ldflags "$LDFLAGS" -o flymon-pushgw ./cmd/flymon-pushgw && \
+    go build -ldflags "$LDFLAGS" -o flymon-gateway ./cmd/flymon-gateway && \
     ls -lh flymon* && \
     # 安装到 /opt/flymon
     mkdir -p /opt/flymon/etc /opt/flymon/logs /opt/flymon/data && \
     cp flymon /opt/flymon/ && \
     cp flymon-edge /opt/flymon/ && \
     cp flymon-pushgw /opt/flymon/ && \
+    cp flymon-gateway /opt/flymon/ && \
     cp -r upstream/etc/* /opt/flymon/etc/ && \
     # pub 前端目录存在才复制 (上游使用 statik 内嵌到二进制中)
     if [ -d upstream/pub ]; then cp -r upstream/pub /opt/flymon/pub; fi && \

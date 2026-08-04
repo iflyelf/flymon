@@ -22,8 +22,8 @@ echo "📌 版本: ${VERSION}"
 echo "🏗️  平台: ${PLATFORMS}"
 echo ""
 
-# 应用事件聚合补丁
-if ! grep -q "AggregationKey" upstream/alert/dispatch/dispatch.go; then
+# 应用事件聚合补丁（精简版，单行替换）
+if ! grep -q "AddToAggregation(eventCopy, notifyRuleId" upstream/alert/dispatch/dispatch.go; then
     echo "📦 应用事件聚合补丁..."
     python3 apply-aggregation-patch.py upstream/alert/dispatch/dispatch.go
     echo "✅ 补丁应用成功"
@@ -79,6 +79,7 @@ for platform in $PLATFORMS; do
     build_binary "$os" "$arch" "flymon" "./cmd/flymon"
     build_binary "$os" "$arch" "flymon-edge" "./cmd/flymon-edge"
     build_binary "$os" "$arch" "flymon-pushgw" "./cmd/flymon-pushgw"
+    build_binary "$os" "$arch" "flymon-gateway" "./cmd/flymon-gateway"
 done
 
 echo ""

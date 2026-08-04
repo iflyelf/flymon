@@ -18,6 +18,7 @@ replace github.com/olivere/elastic/v7 => github.com/n9e/elastic/v7 v7.0.33-0.202
 require (
 	github.com/ccfos/nightingale/v6 v6.7.3
 	github.com/flashcatcloud/ibex v1.3.9
+	github.com/gin-gonic/gin v1.9.1
 	github.com/toolkits/pkg v1.3.11
 	github.com/zeromicro/go-zero v1.10.2
 )
@@ -74,7 +75,6 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gin-contrib/pprof v1.4.0 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
-	github.com/gin-gonic/gin v1.9.1 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/glebarez/sqlite v1.11.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.4 // indirect
