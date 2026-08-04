@@ -1,3 +1,4 @@
 [submodule "upstream"]
 	path = upstream
-	url = https://github.com/ccfos/nightingale.git
+	url = https://github.com/iflyelf/nightingale.git
+	branch = flymon-custom
