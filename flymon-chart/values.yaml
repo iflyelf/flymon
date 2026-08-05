@@ -1,0 +1,421 @@
+# ==============================================================================
+# Flymon Helm Chart 配置文件
+#
+# Flymon = 夜莺(Nightingale) v9 深度定制版，内置：
+#   - 动态聚合告警引擎（可配置窗口/维度/策略）
+#   - 5 个 Go 化内置通知媒介（飞书/短信/邮件/IM/IM加急）
+#   - Gateway 回调服务（飞书交互卡片/AI分析/协同群）
+#
+# 部署模式（mode）：
+#   center  - 中心服务 flymon（Web UI + API + 告警引擎 + 内置媒介）
+#   edge    - 边缘告警引擎 flymon-edge（仅告警引擎，连接中心端）
+#   pushgw  - 推送网关 flymon-pushgw
+# Gateway 作为可选 sidecar/独立部署，由 gateway.enabled 控制。
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 全局配置
+# ------------------------------------------------------------------------------
+global:
+  # 全局镜像仓库地址（设置后覆盖下方 image.registry）
+  imageRegistry: ""
+  # 全局镜像拉取密钥
+  imagePullSecrets: []
+
+# ------------------------------------------------------------------------------
+# 部署模式
+#   center - 中心服务（默认，含 Web/API/告警引擎/内置媒介/自动建表）
+#   edge   - 边缘告警引擎
+#   pushgw - 推送网关
+# ------------------------------------------------------------------------------
+mode: "center"
+
+# ------------------------------------------------------------------------------
+# 时区
+# ------------------------------------------------------------------------------
+timezone: "Asia/Shanghai"
+
+# ------------------------------------------------------------------------------
+# 镜像配置（flymon 单镜像内含 flymon/flymon-edge/flymon-pushgw/flymon-gateway）
+# ------------------------------------------------------------------------------
+image:
+  registry: docker.io
+  repository: iflyelf/flymon
+  # 留空则使用 Chart.appVersion
+  tag: "latest"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# ------------------------------------------------------------------------------
+# 副本数
+# ------------------------------------------------------------------------------
+replicaCount: 2
+
+# ------------------------------------------------------------------------------
+# 主服务配置（config.toml 通过 ConfigMap 挂载，见 templates/configmap.yaml）
+# ------------------------------------------------------------------------------
+config:
+  # 运行模式：release / debug
+  runMode: "release"
+
+  # 日志配置
+  log:
+    output: "stdout"
+    dir: "logs"
+    level: "INFO"
+
+  # HTTP 服务配置
+  http:
+    host: "0.0.0.0"
+    # 中心端默认 17000，边缘端默认 19000
+    port: 17000
+    pprof: true
+    exposeMetrics: true
+    shutdownTimeout: 30
+    # API for Agent（categraf 等采集器上报）
+    apiForAgent:
+      enable: true
+    # API for Service（边缘模式必须启用）
+    apiForService:
+      enable: false
+
+  # 数据库配置（MySQL / PostgreSQL / SQLite）
+  # 启动时自动 AutoMigrate 建表（含聚合表 aggregation_config），无需手动导入 SQL
+  database:
+    # 数据库类型：mysql / postgres / sqlite
+    dbType: "mysql"
+    # DSN 连接串（mysql 示例）
+    dsn: "root:1234@tcp(mysql:3306)/n9e_v6?charset=utf8mb4&parseTime=True&loc=Local&allowNativePasswords=true"
+    # 连接池
+    maxIdleConns: 10
+    maxOpenConns: 100
+    maxLifetime: 14400
+
+  # Redis 配置（告警引擎依赖）
+  redis:
+    address: "redis:6379"
+    # 类型：standalone / cluster / sentinel
+    redisType: "standalone"
+    username: ""
+    password: ""
+    db: 0
+    # 哨兵模式 master 名称
+    masterName: ""
+
+  # ibex（故障自愈）RPC 地址
+  ibex:
+    rpcListen: "0.0.0.0:20090"
+
+# ------------------------------------------------------------------------------
+# Gateway 回调服务（飞书交互卡片/AI分析/协同群）
+# 独立 Deployment（运行 flymon-gateway 子命令），配置全部通过环境变量注入
+# ------------------------------------------------------------------------------
+gateway:
+  # 是否部署 Gateway
+  enabled: true
+  # 副本数
+  replicaCount: 2
+
+  # 应用配置（映射为容器环境变量，变量名与 internal/gateway/config.go 一致）
+  config:
+    # 监听
+    listenHost: "0.0.0.0"
+    listenPort: 5000
+
+    # N9E API（必填）——指向本 chart 部署的中心服务
+    n9eApiUrl: "http://flymon:17000/api/n9e"
+    n9eApiToken: ""
+
+    # AI 分析（OpenClaw）
+    openclawEnabled: false
+    openclawApiUrl: ""
+    openclawApiToken: ""
+    openclawModel: "openclaw/default"
+
+    # AI 分析（iflyelf）
+    iflyelfEnabled: false
+    iflyelfApiUrl: ""
+    iflyelfApiToken: ""
+    iflyelfModel: "auto"
+
+    # AI 调度
+    aiProviderStrategy: "openclaw_first"
+    aiTimeout: 300
+    aiMaxTokens: 1500
+
+    # 飞书域名
+    feishuDomain: "open.feishu.cn"
+
+    # 重试
+    retryMaxAttempts: 3
+    retryDelayBase: 2
+    retryDelayMax: 10
+    retryBackoffFactor: 2
+
+    # API 超时
+    apiTimeout: 10
+    apiConnectTimeout: 5
+
+    # 日志级别
+    logLevel: "INFO"
+
+    # 默认管理员邮箱（协同群拉群用）
+    defaultAdminEmail: ""
+
+    # ------------------------------------------------------------------------
+    # Token 存储：file(单机) / redis(多副本，推荐)
+    # ------------------------------------------------------------------------
+    tokenStoreType: "redis"
+    # file 模式持久化目录
+    dataDir: "/data/gateway"
+    # token TTL（秒，默认 30 天）
+    muteTokenTtl: 2592000
+    aiTokenTtl: 2592000
+    groupChatTokenTtl: 2592000
+
+    # Redis 连接（tokenStoreType=redis 时使用）
+    redisMode: "standalone"       # standalone / sentinel / cluster
+    redisAddr: "redis:6379"       # 集群/哨兵填多地址逗号分隔
+    redisUsername: ""
+    redisPassword: ""
+    redisDb: 0
+    redisPrefix: "n9e_gateway"
+    redisMasterName: ""           # sentinel 模式必填
+
+  # Gateway 服务配置
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+    nodePort: ""
+    portName: http
+    annotations: {}
+
+  # Gateway 资源限制
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+  # Gateway file 模式持久化（tokenStoreType=file 时使用，多副本需 RWX）
+  persistence:
+    enabled: false
+    existingClaim: ""
+    storageClass: ""
+    accessModes:
+      - ReadWriteMany
+    size: 1Gi
+    mountPath: "/data/gateway"
+
+  # Gateway HPA
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
+# ------------------------------------------------------------------------------
+# 敏感信息：是否将 token 类配置放入 Secret（推荐生产开启）
+# 开启后 database.dsn / redis.password / gateway 的各类 token 从 Secret 注入
+# ------------------------------------------------------------------------------
+useSecret: true
+
+# 额外环境变量
+extraEnvVars: []
+extraEnvVarsCM: ""
+extraEnvVarsSecret: ""
+
+# ------------------------------------------------------------------------------
+# 主服务 Service 配置
+# ------------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  clusterIP: ""
+  # 中心端主服务端口（Web UI + API）
+  port: 17000
+  targetPort: 17000
+  nodePort: ""
+  portName: http
+  # Ibex RPC 端口（故障自愈）
+  ibexPort: 20090
+  ibexTargetPort: 20090
+  ibexNodePort: ""
+  ibexPortName: ibex-rpc
+  annotations: {}
+  sessionAffinity: None
+  sessionAffinityConfig: {}
+
+# ------------------------------------------------------------------------------
+# Ingress（对外暴露 Web UI）
+# ------------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: flymon.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ------------------------------------------------------------------------------
+# 资源限制
+# ------------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 8Gi
+
+# ------------------------------------------------------------------------------
+# 安全上下文
+# ------------------------------------------------------------------------------
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+  runAsNonRoot: false
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  privileged: false
+  runAsUser: 0
+  capabilities:
+    drop:
+      - ALL
+    add: []
+
+# ------------------------------------------------------------------------------
+# 主机命名空间
+# ------------------------------------------------------------------------------
+hostIPC: false
+hostNetwork: false
+hostPID: false
+
+# ------------------------------------------------------------------------------
+# 健康检查（主服务）
+# ------------------------------------------------------------------------------
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /api/n9e/ping
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /api/n9e/ping
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /api/n9e/ping
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 30
+  successThreshold: 1
+
+# ------------------------------------------------------------------------------
+# 自动扩缩容 (HPA)（主服务）
+# ------------------------------------------------------------------------------
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# ------------------------------------------------------------------------------
+# Pod 中断预算 (PDB)
+# ------------------------------------------------------------------------------
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# ------------------------------------------------------------------------------
+# 服务账号
+# ------------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+# ------------------------------------------------------------------------------
+# Pod 注解和标签
+# ------------------------------------------------------------------------------
+podAnnotations: {}
+podLabels: {}
+priorityClassName: ""
+
+# ------------------------------------------------------------------------------
+# 存储配置（主服务日志和数据持久化）
+# ------------------------------------------------------------------------------
+persistence:
+  logs:
+    enabled: false
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 10Gi
+    mountPath: /opt/flymon/logs
+  # SQLite 模式下的数据目录
+  data:
+    enabled: false
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 20Gi
+    mountPath: /opt/flymon/data
+
+# ------------------------------------------------------------------------------
+# 更新策略
+# ------------------------------------------------------------------------------
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# ------------------------------------------------------------------------------
+# 调度与亲和性
+# ------------------------------------------------------------------------------
+affinity: {}
+  # nodeAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #     nodeSelectorTerms:
+  #       - matchExpressions:
+  #           - key: application/flymon
+  #             operator: In
+  #             values: ["flymon"]
+
+nodeSelector: {}
+
+tolerations: []
+  # - key: node-role.kubernetes.io/control-plane
+  #   effect: NoSchedule
+
+# 反亲和预设：soft(尽力分散) / hard(强制分散)
+podAntiAffinityPreset: soft
+
+# 初始化容器
+initContainers: []

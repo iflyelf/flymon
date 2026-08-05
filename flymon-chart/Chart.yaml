@@ -1,0 +1,21 @@
+apiVersion: v2
+name: flymon
+description: Flymon - 基于夜莺(Nightingale) v9 的深度定制版，内置动态聚合告警引擎、5个Go化通知媒介、Gateway回调服务
+type: application
+version: 1.0.0
+appVersion: "v9.0.0-flymon"
+keywords:
+  - flymon
+  - nightingale
+  - n9e
+  - monitoring
+  - alerting
+  - aggregation
+  - prometheus
+home: https://github.com/iflyelf/flymon
+sources:
+  - https://github.com/iflyelf/flymon
+  - https://github.com/iflyelf/nightingale
+maintainers:
+  - name: iflyelf
+    email: iflyelf@example.com

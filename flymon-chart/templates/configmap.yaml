@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "flymon.fullname" . }}-config
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "flymon.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    RunMode = {{ .Values.config.runMode | quote }}
+
+    [Log]
+    Output = {{ .Values.config.log.output | quote }}
+    Dir = {{ .Values.config.log.dir | quote }}
+    Level = {{ .Values.config.log.level | quote }}
+
+    [HTTP]
+    Host = {{ .Values.config.http.host | quote }}
+    Port = {{ .Values.config.http.port }}
+    {{- if .Values.config.http.certFile }}
+    CertFile = {{ .Values.config.http.certFile | quote }}
+    {{- end }}
+    {{- if .Values.config.http.keyFile }}
+    KeyFile = {{ .Values.config.http.keyFile | quote }}
+    {{- end }}
+    PrintAccessLog = {{ .Values.config.http.printAccessLog }}
+    PProf = {{ .Values.config.http.pprof }}
+    ExposeMetrics = {{ .Values.config.http.exposeMetrics }}
+    ShutdownTimeout = {{ .Values.config.http.shutdownTimeout }}
+
+    [HTTP.APIForAgent]
+    Enable = {{ .Values.config.http.apiForAgent.enable }}
+    {{- if .Values.config.http.apiForAgent.basicAuth }}
+    [HTTP.APIForAgent.BasicAuth]
+    {{- range $user, $pass := .Values.config.http.apiForAgent.basicAuth }}
+    {{ $user }} = {{ $pass | quote }}
+    {{- end }}
+    {{- end }}
+
+    [HTTP.APIForService]
+    Enable = {{ .Values.config.http.apiForService.enable }}
+
+    [DB]
+    {{- if .Values.useSecret }}
+    # DSN 从环境变量 N9E_DSN 读取（Secret 注入）
+    DSN = "${N9E_DSN}"
+    {{- else }}
+    DSN = {{ .Values.config.database.dsn | quote }}
+    {{- end }}
+    DBType = {{ .Values.config.database.dbType | quote }}
+    MaxIdleConns = {{ .Values.config.database.maxIdleConns }}
+    MaxOpenConns = {{ .Values.config.database.maxOpenConns }}
+    MaxLifetime = {{ .Values.config.database.maxLifetime }}
+
+    [Redis]
+    Address = {{ .Values.config.redis.address | quote }}
+    {{- if .Values.config.redis.username }}
+    Username = {{ .Values.config.redis.username | quote }}
+    {{- end }}
+    {{- if .Values.useSecret }}
+    # Password 从环境变量 N9E_REDIS_PASSWORD 读取（Secret 注入）
+    Password = "${N9E_REDIS_PASSWORD}"
+    {{- else }}
+    {{- if .Values.config.redis.password }}
+    Password = {{ .Values.config.redis.password | quote }}
+    {{- end }}
+    {{- end }}
+    DB = {{ .Values.config.redis.db }}
+    RedisType = {{ .Values.config.redis.redisType | quote }}
+    {{- if eq .Values.config.redis.redisType "sentinel" }}
+    MasterName = {{ .Values.config.redis.masterName | quote }}
+    {{- end }}
+
+    [Ibex]
+    RPCListen = {{ .Values.config.ibex.rpcListen | quote }}

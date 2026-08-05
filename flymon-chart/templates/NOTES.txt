@@ -1,0 +1,78 @@
+Flymon {{ .Chart.AppVersion }} 已成功部署！
+
+部署模式: {{ .Values.mode }}
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+{{ if eq .Values.mode "center" -}}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  中心服务访问地址
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ if .Values.ingress.enabled }}
+Web UI (Ingress):
+  {{- range .Values.ingress.hosts }}
+  - http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+  {{- end }}
+{{ else if eq .Values.service.type "LoadBalancer" }}
+Web UI (LoadBalancer):
+  export SERVICE_IP=$(kubectl get svc {{ include "flymon.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo "http://${SERVICE_IP}:{{ .Values.service.port }}"
+{{ else if eq .Values.service.type "NodePort" }}
+Web UI (NodePort):
+  export NODE_PORT=$(kubectl get svc {{ include "flymon.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[?(@.name=="{{ .Values.service.portName }}")].nodePort}')
+  export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+  echo "http://${NODE_IP}:${NODE_PORT}"
+{{ else }}
+Web UI (ClusterIP - 端口转发):
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "flymon.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  然后访问: http://localhost:{{ .Values.service.port }}
+{{ end }}
+
+默认登录账号: root
+默认登录密码: root.2020
+
+{{ if .Values.gateway.enabled }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Gateway 回调服务（飞书交互/AI分析/协同群）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Gateway 已部署，副本数: {{ .Values.gateway.replicaCount }}
+Service: {{ include "flymon.fullname" . }}-gateway:{{ .Values.gateway.service.port }}
+
+配置飞书内置媒介时，domain_url 填写：
+  - 集群内: http://{{ include "flymon.fullname" . }}-gateway:{{ .Values.gateway.service.port }}
+  - 集群外（飞书回调）: 需配置 Ingress 或 LoadBalancer 对外暴露
+{{ end }}
+{{- end }}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  核心特性
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ 动态聚合告警引擎（Web 配置窗口/维度/策略）
+✅ 5 个 Go 化内置通知媒介（飞书/短信/邮件/IM/IM加急）
+✅ Gateway 回调服务（飞书交互卡片/快捷屏蔽/AI分析）
+✅ 启动时自动建表（含聚合配置表 aggregation_config）
+✅ 基于夜莺 v9.0.0 深度定制
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  快速开始
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 查看 Pod 状态:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. 查看日志:
+   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "flymon.name" . }} -f
+
+3. 配置聚合规则（Web 界面）:
+   告警管理 → 聚合配置 → 创建配置
+   - 聚合窗口: 30-300 秒
+   - 聚合维度: 告警规则名/业务组/级别/数据源/自定义标签
+   - 发送策略: delay(窗口结束发送) / immediate(窗口内立即发送)
+
+4. 配置内置媒介（Web 界面）:
+   系统管理 → 通知媒介 → 找到 5 个 *_builtin 媒介配置参数
+
+文档: https://github.com/iflyelf/flymon

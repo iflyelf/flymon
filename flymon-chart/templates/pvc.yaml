@@ -1,0 +1,55 @@
+{{- if .Values.persistence.logs.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "flymon.fullname" . }}-logs
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "flymon.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.logs.accessMode }}
+  {{- if .Values.persistence.logs.storageClass }}
+  storageClassName: {{ .Values.persistence.logs.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.logs.size }}
+{{- end }}
+{{- if .Values.persistence.data.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "flymon.fullname" . }}-data
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "flymon.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.data.accessMode }}
+  {{- if .Values.persistence.data.storageClass }}
+  storageClassName: {{ .Values.persistence.data.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.data.size }}
+{{- end }}
+{{- if and .Values.gateway.enabled (eq .Values.gateway.config.tokenStoreType "file") .Values.gateway.persistence.enabled (not .Values.gateway.persistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "flymon.fullname" . }}-gateway-data
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "flymon.gateway.labels" . | nindent 4 }}
+  {{- with .Values.gateway.persistence.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes: {{- toYaml .Values.gateway.persistence.accessModes | nindent 4 }}
+  {{- if .Values.gateway.persistence.storageClass }}
+  storageClassName: {{ .Values.gateway.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.gateway.persistence.size }}
+{{- end }}

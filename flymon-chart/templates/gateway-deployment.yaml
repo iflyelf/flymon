@@ -1,0 +1,238 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "flymon.fullname" . }}-gateway
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "flymon.gateway.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.gateway.autoscaling.enabled }}
+  replicas: {{ .Values.gateway.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels: {{- include "flymon.gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "flymon.gateway.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if .Values.useSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "flymon.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "flymon.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken | default false }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.securityContext }}
+      securityContext: {{- toYaml .Values.securityContext | nindent 8 }}
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity: {{- toYaml .Values.affinity | nindent 8 }}
+      {{- else }}
+      affinity: {{- include "flymon.gateway.affinities.pods" . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: {{ include "flymon.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          {{- if .Values.containerSecurityContext }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- end }}
+          command:
+            - "flymon-gateway"
+          ports:
+            - name: {{ .Values.gateway.service.portName }}
+              containerPort: {{ .Values.gateway.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | default "Asia/Shanghai" | quote }}
+            # 监听
+            - name: LISTEN_HOST
+              value: {{ .Values.gateway.config.listenHost | quote }}
+            - name: LISTEN_PORT
+              value: {{ .Values.gateway.config.listenPort | quote }}
+            # N9E API
+            - name: N9E_API_URL
+              value: {{ .Values.gateway.config.n9eApiUrl | quote }}
+            {{- if .Values.useSecret }}
+            - name: N9E_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "flymon.fullname" . }}
+                  key: GATEWAY_N9E_API_TOKEN
+            {{- else }}
+            - name: N9E_API_TOKEN
+              value: {{ .Values.gateway.config.n9eApiToken | quote }}
+            {{- end }}
+            # Token 存储
+            - name: TOKEN_STORE_TYPE
+              value: {{ .Values.gateway.config.tokenStoreType | quote }}
+            - name: DATA_DIR
+              value: {{ .Values.gateway.config.dataDir | quote }}
+            - name: MUTE_TOKEN_TTL
+              value: {{ .Values.gateway.config.muteTokenTtl | quote }}
+            - name: AI_TOKEN_TTL
+              value: {{ .Values.gateway.config.aiTokenTtl | quote }}
+            - name: GROUP_CHAT_TOKEN_TTL
+              value: {{ .Values.gateway.config.groupChatTokenTtl | quote }}
+            # Redis
+            - name: REDIS_MODE
+              value: {{ .Values.gateway.config.redisMode | quote }}
+            - name: REDIS_ADDR
+              value: {{ .Values.gateway.config.redisAddr | quote }}
+            - name: REDIS_USERNAME
+              value: {{ .Values.gateway.config.redisUsername | quote }}
+            {{- if .Values.useSecret }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "flymon.fullname" . }}
+                  key: GATEWAY_REDIS_PASSWORD
+            {{- else }}
+            - name: REDIS_PASSWORD
+              value: {{ .Values.gateway.config.redisPassword | quote }}
+            {{- end }}
+            - name: REDIS_DB
+              value: {{ .Values.gateway.config.redisDb | quote }}
+            - name: REDIS_PREFIX
+              value: {{ .Values.gateway.config.redisPrefix | quote }}
+            - name: REDIS_MASTER_NAME
+              value: {{ .Values.gateway.config.redisMasterName | quote }}
+            # AI - OpenClaw
+            - name: OPENCLAW_ENABLED
+              value: {{ .Values.gateway.config.openclawEnabled | quote }}
+            {{- if .Values.gateway.config.openclawEnabled }}
+            - name: OPENCLAW_API_URL
+              value: {{ .Values.gateway.config.openclawApiUrl | quote }}
+            {{- if .Values.useSecret }}
+            - name: OPENCLAW_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "flymon.fullname" . }}
+                  key: GATEWAY_OPENCLAW_API_TOKEN
+            {{- else }}
+            - name: OPENCLAW_API_TOKEN
+              value: {{ .Values.gateway.config.openclawApiToken | quote }}
+            {{- end }}
+            - name: OPENCLAW_MODEL
+              value: {{ .Values.gateway.config.openclawModel | quote }}
+            {{- end }}
+            # AI - iflyelf
+            - name: IFLYELF_ENABLED
+              value: {{ .Values.gateway.config.iflyelfEnabled | quote }}
+            {{- if .Values.gateway.config.iflyelfEnabled }}
+            - name: IFLYELF_API_URL
+              value: {{ .Values.gateway.config.iflyelfApiUrl | quote }}
+            {{- if .Values.useSecret }}
+            - name: IFLYELF_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "flymon.fullname" . }}
+                  key: GATEWAY_IFLYELF_API_TOKEN
+            {{- else }}
+            - name: IFLYELF_API_TOKEN
+              value: {{ .Values.gateway.config.iflyelfApiToken | quote }}
+            {{- end }}
+            - name: IFLYELF_MODEL
+              value: {{ .Values.gateway.config.iflyelfModel | quote }}
+            {{- end }}
+            # AI 调度
+            - name: AI_PROVIDER_STRATEGY
+              value: {{ .Values.gateway.config.aiProviderStrategy | quote }}
+            - name: AI_TIMEOUT
+              value: {{ .Values.gateway.config.aiTimeout | quote }}
+            - name: AI_MAX_TOKENS
+              value: {{ .Values.gateway.config.aiMaxTokens | quote }}
+            # 飞书
+            - name: FEISHU_DOMAIN
+              value: {{ .Values.gateway.config.feishuDomain | quote }}
+            # 重试
+            - name: RETRY_MAX_ATTEMPTS
+              value: {{ .Values.gateway.config.retryMaxAttempts | quote }}
+            - name: RETRY_DELAY_BASE
+              value: {{ .Values.gateway.config.retryDelayBase | quote }}
+            - name: RETRY_DELAY_MAX
+              value: {{ .Values.gateway.config.retryDelayMax | quote }}
+            - name: RETRY_BACKOFF_FACTOR
+              value: {{ .Values.gateway.config.retryBackoffFactor | quote }}
+            # API 超时
+            - name: API_TIMEOUT
+              value: {{ .Values.gateway.config.apiTimeout | quote }}
+            - name: API_CONNECT_TIMEOUT
+              value: {{ .Values.gateway.config.apiConnectTimeout | quote }}
+            # 日志
+            - name: LOG_LEVEL
+              value: {{ .Values.gateway.config.logLevel | quote }}
+            # 默认管理员邮箱
+            {{- if .Values.gateway.config.defaultAdminEmail }}
+            - name: DEFAULT_ADMIN_EMAIL
+              value: {{ .Values.gateway.config.defaultAdminEmail | quote }}
+            {{- end }}
+            {{- with .Values.extraEnvVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.extraEnvVarsCM .Values.extraEnvVarsSecret }}
+          envFrom:
+            {{- if .Values.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ .Values.extraEnvVarsCM }}
+            {{- end }}
+            {{- if .Values.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ .Values.extraEnvVarsSecret }}
+            {{- end }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: {{ .Values.gateway.service.portName }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: {{ .Values.gateway.service.portName }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- with .Values.gateway.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if and (eq .Values.gateway.config.tokenStoreType "file") .Values.gateway.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.gateway.persistence.mountPath }}
+          {{- end }}
+      {{- if and (eq .Values.gateway.config.tokenStoreType "file") .Values.gateway.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ if .Values.gateway.persistence.existingClaim }}{{ .Values.gateway.persistence.existingClaim }}{{- else }}{{ include "flymon.fullname" . }}-gateway-data{{- end }}
+      {{- end }}
+{{- end }}
