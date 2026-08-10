@@ -259,7 +259,7 @@ RUN set -eux && \
     cd /build/flymon && \
     # 下载 flymon 主模块依赖
     go mod download && \
-    # 构建 flymon 三个服务, 版本号格式: v9.0.0-flymon
+    # 构建 flymon 三个服务, 版本号格式: v9.1.0-flymon
     RELEASE_VERSION="${UPSTREAM_TAG}-flymon" && \
     LDFLAGS="-w -s -X github.com/ccfos/nightingale/v6/pkg/version.Version=${RELEASE_VERSION}" && \
     go build -ldflags "$LDFLAGS" -o flymon ./cmd/flymon && \

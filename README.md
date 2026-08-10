@@ -4,7 +4,7 @@
 [![Go Version](https://img.shields.io/badge/go-1.25-blue)](https://go.dev)
 [![License](https://img.shields.io/github/license/iflyelf/flymon)](LICENSE)
 
-Flymon 是基于 [夜莺（Nightingale）](https://github.com/ccfos/nightingale) v9.0.0+ 的深度定制版，采用 **go-zero 架构包装层**，内置 **动态聚合告警引擎**、**5 个 Go 化通知媒介**、**Gateway 回调服务**，可跟随官方自动升级。
+Flymon 是基于 [夜莺（Nightingale）](https://github.com/ccfos/nightingale) v9.1.0+ 的深度定制版，采用 **go-zero 架构包装层**，内置 **动态聚合告警引擎**、**5 个 Go 化通知媒介**、**Gateway 回调服务**，可跟随官方自动升级。
 
 ## 核心特性
 
@@ -24,9 +24,9 @@ Flymon 是基于 [夜莺（Nightingale）](https://github.com/ccfos/nightingale)
 从 [Releases](https://github.com/iflyelf/flymon/releases) 下载对应平台的压缩包：
 
 ```bash
-wget https://github.com/iflyelf/flymon/releases/download/v9.0.0-flymon/flymon-v9.0.0-flymon-linux-amd64.tar.gz
-tar xzf flymon-v9.0.0-flymon-linux-amd64.tar.gz
-cd flymon-v9.0.0-flymon-linux-amd64
+wget https://github.com/iflyelf/flymon/releases/download/v9.1.0-flymon/flymon-v9.1.0-flymon-linux-amd64.tar.gz
+tar xzf flymon-v9.1.0-flymon-linux-amd64.tar.gz
+cd flymon-v9.1.0-flymon-linux-amd64
 ```
 
 ### 初始化数据库
@@ -70,10 +70,10 @@ sqlite3 n9e.db < sql/sqlite-schema.sql
 | 飞书交互回调 | 无 | 内置 Gateway（屏蔽按钮/AI 分析/协同群） |
 | 聚合屏蔽 | 无 | 按聚合维度批量屏蔽 |
 | 编译产物名 | n9e / n9e-edge / n9e-pushgw | flymon / flymon-edge / flymon-pushgw / flymon-gateway |
-| 版本号 | v9.0.0 | v9.0.0-flymon |
+| 版本号 | v9.1.0 | v9.1.0-flymon |
 | 升级跟随 | - | 自动（GitHub Actions） |
 
-**兼容性**：Flymon 的配置文件、数据库表结构、API 接口均与官方 v9.0.0 保持一致，可平滑迁移。
+**兼容性**：Flymon 的配置文件、数据库表结构、API 接口均与官方 v9.1.0 保持一致，可平滑迁移。
 
 ## 聚合告警说明
 
@@ -176,7 +176,7 @@ ls -lh bin/
 
 **自动升级（推荐）**: GitHub Actions 每 6 小时检查一次官方新版本，发现后自动创建 PR。
 
-**手动升级**: 若需手动升级到指定版本（如 v9.1.0），在 upstream fork 的 `flymon-custom` 分支上执行：
+**手动升级**: 若需手动升级到指定版本（如 v9.2.0），在 upstream fork 的 `flymon-custom` 分支上执行：
 
 ```bash
 cd upstream
@@ -188,14 +188,14 @@ git remote add ccfos https://github.com/ccfos/nightingale.git 2>/dev/null || \
 git fetch ccfos --tags
 
 # 关键：用 merge 而非 checkout，保留定制代码
-git merge v9.1.0  # ← 官方新版本，定制代码会被保留
+git merge v9.2.0  # ← 官方新版本，定制代码会被保留
 
 # 解决冲突（若有），然后推送
 git push origin flymon-custom
 
 # 回到主仓库，更新子模块指针和基线 tag
 cd ..
-echo "v9.1.0" > .upstream-base-tag
+echo "v9.2.0" > .upstream-base-tag
 git add upstream .upstream-base-tag
 
 # 同步依赖和 SQL
@@ -309,7 +309,7 @@ bash scripts/gomod-sync.sh
 
 ## 更新日志
 
-### v9.0.0-flymon-aggregation (2025-01)
+### v9.1.0-flymon-aggregation (2025-01)
 
 **重大更新：告警聚合与通知媒介 Go 化**
 
