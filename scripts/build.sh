@@ -7,8 +7,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# 从 upstream 子模块读取版本号
-UPSTREAM_VERSION=$(cd upstream && git describe --tags --exact-match 2>/dev/null || echo "unknown")
+# 版本号来源：优先读 .upstream-base-tag（与官方 tag 永远对齐），回退 git describe
+if [ -f "${ROOT_DIR}/.upstream-base-tag" ]; then
+    UPSTREAM_VERSION=$(tr -d '[:space:]' < "${ROOT_DIR}/.upstream-base-tag")
+else
+    UPSTREAM_VERSION=$(cd upstream && git describe --tags --exact-match 2>/dev/null || echo "unknown")
+fi
 VERSION="${UPSTREAM_VERSION}-flymon"
 
 # 默认平台

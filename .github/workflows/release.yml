@@ -32,16 +32,26 @@ jobs:
         if: ${{ github.event.inputs.upstream_tag != '' }}
         run: |
           cd upstream
-          git fetch --tags
+          # 从官方 ccfos 拉取指定 tag（fork 可能不含官方新 tag）
+          git remote add ccfos https://github.com/ccfos/nightingale.git 2>/dev/null || \
+            git remote set-url ccfos https://github.com/ccfos/nightingale.git
+          git fetch ccfos --tags
           git checkout "${{ github.event.inputs.upstream_tag }}"
           cd ..
+          # 同步更新基线 tag 文件，保证版本号来源一致
+          echo "${{ github.event.inputs.upstream_tag }}" > .upstream-base-tag
 
       - name: 读取上游版本号
         id: version
         run: |
-          cd upstream
-          UPSTREAM_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
-          cd ..
+          # 优先读取 .upstream-base-tag（与官方 tag 永远对齐），回退 git describe
+          if [ -f .upstream-base-tag ]; then
+            UPSTREAM_TAG=$(tr -d '[:space:]' < .upstream-base-tag)
+          else
+            cd upstream
+            UPSTREAM_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+            cd ..
+          fi
           echo "upstream_tag=${UPSTREAM_TAG}" >> "$GITHUB_OUTPUT"
           echo "flymon_version=${UPSTREAM_TAG}-flymon" >> "$GITHUB_OUTPUT"
           echo "对齐上游版本: ${UPSTREAM_TAG}"
