@@ -59,13 +59,19 @@ jobs:
           # 子模块版本由 sync-upstream.yml 对齐到具体 tag
           git submodule update --init upstream
 
-          cd upstream
-          LATEST_COMMIT=$(git rev-parse HEAD)
-          # 优先取精确匹配的正式版 tag（排除 beta/rc/alpha）
-          LATEST_TAG=$(git describe --tags --exact-match 2>/dev/null \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            || git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 \
-            || echo "unknown")
+          LATEST_COMMIT=$(cd upstream && git rev-parse HEAD)
+
+          # 优先读取 .upstream-base-tag（记录当前定制分支基于的官方 tag）。
+          # 定制分支是 merge 官方 tag 后的 commit，git describe 无法精确匹配，
+          # 且 fork 仓库不含官方新 tag，故以该文件为准。
+          if [ -f .upstream-base-tag ]; then
+            LATEST_TAG=$(tr -d '[:space:]' < .upstream-base-tag)
+          else
+            LATEST_TAG=$(cd upstream && git describe --tags --exact-match 2>/dev/null \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              || (cd upstream && git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1) \
+              || echo "unknown")
+          fi
 
           echo "📌 上游锁定 commit: $LATEST_COMMIT"
           echo "🏷️  上游锁定 tag: $LATEST_TAG"
