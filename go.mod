@@ -5,13 +5,6 @@ go 1.25.0
 // 使用本地 upstream 子模块
 replace github.com/ccfos/nightingale/v6 => ./upstream
 
-// 以下 replace 必须与 upstream/go.mod 保持一致：
-// Go modules 不会继承依赖模块（upstream）的 replace 指令，
-// 必须在主模块显式重复，否则解析到不兼容版本导致编译失败。
-// x/exp 必须锁定旧版本，prometheus v0.47.1 依赖其旧版 slices.SortFunc(bool) 签名。
-// 注意：不要对本项目执行 `go mod tidy`（go 1.26 的 MVS 会升级 x/exp 破坏兼容），
-// 依赖管理请使用 scripts/gomod-sync.sh。
-replace golang.org/x/exp => golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
 
 replace github.com/olivere/elastic/v7 => github.com/n9e/elastic/v7 v7.0.33-0.20251031061708-f480a2dfcfa7
 
@@ -27,7 +20,11 @@ require (
 require (
 	dario.cat/mergo v1.0.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.4.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.0 // indirect
 	github.com/Azure/go-ntlmssp v0.0.0-20220621081337-cb9428e4ac1e // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.1.1 // indirect
 	github.com/BurntSushi/toml v1.4.0 // indirect
 	github.com/ClickHouse/ch-go v0.61.5 // indirect
 	github.com/ClickHouse/clickhouse-go/v2 v2.23.2 // indirect
@@ -37,6 +34,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.34.0 // indirect
 	github.com/VictoriaMetrics/metricsql v0.81.1 // indirect
 	github.com/a2aproject/a2a-go/v2 v2.2.1 // indirect
+	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.13 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
@@ -49,6 +47,7 @@ require (
 	github.com/aliyun/credentials-go v1.4.6 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
+	github.com/aws/aws-sdk-go v1.48.14 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
@@ -66,6 +65,7 @@ require (
 	github.com/eapache/go-resiliency v1.7.0 // indirect
 	github.com/eapache/go-xerial-snappy v0.0.0-20230731223053-c322873962e3 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
+	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/elastic/elastic-transport-go/v8 v8.9.0 // indirect
 	github.com/elastic/go-elasticsearch/v8 v8.19.4 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -96,6 +96,7 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -123,12 +124,15 @@ require (
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
+	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/koding/multiconfig v0.0.0-20171124222453-69c27309b2d7 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/larksuite/oapi-sdk-go/v3 v3.5.1 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lib/pq v1.10.9 // indirect
@@ -141,7 +145,9 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/mojocn/base64Captcha v1.3.6 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/n9e/n9e-mcp-server v0.1.2-0.20260710025621-2992f7fecbf7 // indirect
+	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/olivere/elastic/v7 v7.0.32 // indirect
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0 // indirect
 	github.com/openzipkin/zipkin-go v0.4.3 // indirect
@@ -154,13 +160,16 @@ require (
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20260120034856-e15515e804da // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
+	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/pquerna/cachecontrol v0.1.0 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
+	github.com/prometheus/common/sigv4 v0.1.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	github.com/prometheus/prometheus v0.47.1 // indirect
+	github.com/prometheus/prometheus v0.49.1 // indirect
 	github.com/rakyll/statik v0.1.7 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
@@ -171,6 +180,7 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tidwall/gjson v1.14.2 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
@@ -195,6 +205,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
+	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
