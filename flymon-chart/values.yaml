@@ -419,3 +419,56 @@ podAntiAffinityPreset: soft
 
 # 初始化容器
 initContainers: []
+
+# ==============================================================================
+# 额外资源部署（extraDeploy）
+# ==============================================================================
+# 通过 Helm 模板渲染额外的 Kubernetes 资源
+# 示例用途：部署 CephFS CSI Secret、静态 PV、ConfigMap 等
+# 默认为空，按需启用
+# ==============================================================================
+extraDeploy: []
+
+# 示例：部署 CephFS CSI Secret（用于静态 PV）
+# extraDeploy:
+#   - |
+#     apiVersion: v1
+#     kind: Secret
+#     metadata:
+#       name: csi-cephfs-secret
+#       namespace: {{ .Release.Namespace }}
+#     stringData:
+#       userID: admin
+#       userKey: AQCIfXlqHaabIBAA96h9RQ/iG+v7L5Pyi2p8PA==
+#       adminID: admin
+#       adminKey: AQCIfXlqHaabIBAA96h9RQ/iG+v7L5Pyi2p8PA==
+#
+#   - |
+#     apiVersion: v1
+#     kind: PersistentVolume
+#     metadata:
+#       name: pv-flymon-logs
+#     spec:
+#       accessModes:
+#         - ReadWriteOnce
+#       capacity:
+#         storage: 10Gi
+#       claimRef:
+#         apiVersion: v1
+#         kind: PersistentVolumeClaim
+#         name: flymon-logs
+#         namespace: {{ .Release.Namespace }}
+#       csi:
+#         driver: cephfs.csi.ceph.com
+#         nodeStageSecretRef:
+#           name: csi-cephfs-secret
+#           namespace: {{ .Release.Namespace }}
+#         volumeAttributes:
+#           fsName: "cephfs"
+#           clusterID: "060bc41a-948d-11f1-bac1-0da08ea37022"
+#           staticVolume: "true"
+#           rootPath: /k8s/prod/flymon/flymon-logs
+#         volumeHandle: pv-flymon-logs
+#       persistentVolumeReclaimPolicy: Retain
+#       volumeMode: Filesystem
+#       storageClassName: ""
