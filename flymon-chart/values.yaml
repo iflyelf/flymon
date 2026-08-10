@@ -43,7 +43,7 @@ image:
   repository: iflyelf/flymon
   # 留空则使用 Chart.appVersion
   tag: "latest"
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   pullSecrets: []
 
 # ------------------------------------------------------------------------------
