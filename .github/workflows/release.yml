@@ -83,6 +83,7 @@ jobs:
             cp "flymon-${platform}" "flymon-${VERSION}-${platform}/flymon"
             cp "flymon-edge-${platform}" "flymon-${VERSION}-${platform}/flymon-edge"
             cp "flymon-pushgw-${platform}" "flymon-${VERSION}-${platform}/flymon-pushgw"
+            cp "flymon-gateway-${platform}" "flymon-${VERSION}-${platform}/flymon-gateway"
             cp -r ../sql "flymon-${VERSION}-${platform}/sql"
             cp ../etc/*.example.* "flymon-${VERSION}-${platform}/" 2>/dev/null || true
             tar czf "flymon-${VERSION}-${platform}.tar.gz" "flymon-${VERSION}-${platform}"
@@ -104,6 +105,7 @@ jobs:
             - `flymon` - 中心服务（对应 n9e）
             - `flymon-edge` - 边缘节点（对应 n9e-edge）
             - `flymon-pushgw` - 数据推送网关（对应 n9e-pushgw）
+            - `flymon-gateway` - 告警回调网关（Gateway Provider）
 
             ### 平台
             - linux/amd64
@@ -113,3 +115,19 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/checksums.txt
+
+  cleanup:
+    name: 清理旧 workflow
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: 删除旧的 workflow 运行记录
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 3
