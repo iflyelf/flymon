@@ -146,3 +146,19 @@ jobs:
           labels: |
             dependencies
             automated
+
+  cleanup:
+    name: 清理旧 workflow
+    needs: [sync]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: 删除旧的 workflow 运行记录
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 3
