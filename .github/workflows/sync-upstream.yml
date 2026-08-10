@@ -20,7 +20,11 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # upstream 子模块位于另一个仓库（iflyelf/nightingale），
+          # 默认 GITHUB_TOKEN 仅对当前仓库有权限，跨仓库拉取会 403，
+          # 故使用具备该仓库读写权限的 PAT。
+          token: ${{ secrets.SUBMODULE_PAT }}
+          persist-credentials: true
 
       - name: 配置 Git
         run: |
@@ -63,6 +67,8 @@ jobs:
         if: steps.check.outputs.need_update == 'true'
         run: |
           cd upstream
+          # 用 PAT 覆盖 origin 认证，确保能推送到 fork（iflyelf/nightingale）
+          git remote set-url origin "https://x-access-token:${{ secrets.SUBMODULE_PAT }}@github.com/iflyelf/nightingale.git"
           # 确保在定制分支上
           git checkout flymon-custom
           git config user.name "github-actions[bot]"
