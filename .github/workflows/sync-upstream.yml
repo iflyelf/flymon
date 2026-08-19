@@ -117,7 +117,8 @@ jobs:
         if: steps.check.outputs.need_update == 'true' && steps.merge.outputs.has_conflict == 'false'
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # 默认 GITHUB_TOKEN 被 GitHub 禁止创建 PR，改用具备仓库读写权限的 PAT
+          token: ${{ secrets.SUBMODULE_PAT }}
           branch: auto-sync-${{ steps.check.outputs.latest_tag }}
           title: "⬆️ 升级上游到 ${{ steps.check.outputs.latest_tag }}"
           body: |
