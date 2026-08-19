@@ -5,7 +5,6 @@ go 1.25.0
 // 使用本地 upstream 子模块
 replace github.com/ccfos/nightingale/v6 => ./upstream
 
-
 replace github.com/olivere/elastic/v7 => github.com/n9e/elastic/v7 v7.0.33-0.20251031061708-f480a2dfcfa7
 
 require (
