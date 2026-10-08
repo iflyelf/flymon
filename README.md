@@ -60,6 +60,32 @@ sqlite3 n9e.db < sql/sqlite-schema.sql
 
 > 数据库表由程序启动时自动迁移（GORM AutoMigrate），新增的 `aggregation_config` 表与 `alert_mute` 聚合屏蔽字段无需手动执行 SQL。
 
+### Docker 镜像
+
+CI 会自动将镜像推送到 Docker Hub 与华为云 SWR（国内推荐）：
+
+```bash
+# Docker Hub（国外）
+docker pull iflyelf/flymon:latest-flymon
+
+# 华为云 SWR（国内推荐）
+docker pull swr.cn-east-3.myhuaweicloud.com/iflyelf/flymon:latest-flymon
+
+# 运行中心节点
+docker run -d --name flymon \
+  -p 19000:19000 -p 18000:18000 -p 5000:5000 \
+  -v /opt/flymon/etc:/opt/flymon/etc \
+  -v /opt/flymon/logs:/opt/flymon/logs \
+  iflyelf/flymon:latest-flymon
+```
+
+Dockerfile 采用**多阶段构建**，构建更快、运行镜像更小：
+
+| 阶段 | 基础镜像 | 作用 |
+| --- | --- | --- |
+| builder | `iflyelf/ubuntu:latest` | 已预装 Go / Node / Python / 完整工具链，应用事件聚合补丁并编译 `flymon` / `flymon-edge` / `flymon-pushgw` / `flymon-gateway` 静态二进制 |
+| runtime | `iflyelf/ubuntu:lite` | 仅拷贝编译产物 + 最小运行依赖（`bash` / `netcat-openbsd` / `curl` / `ca-certificates` / `tzdata` / `locales`） |
+
 ## 与官方夜莺的区别
 
 | 特性 | 夜莺（官方） | Flymon |
@@ -259,6 +285,13 @@ flymon/
 ```
 
 ## GitHub Actions
+
+### Docker Publish（docker-publish.yml）
+
+- **触发**：Dockerfile / 补丁 / entrypoint / workflow 变更，或每周一自动构建
+- **产物**：多架构镜像（linux/amd64、linux/arm64）
+- **推送**：Docker Hub + 华为云 SWR（`swr.cn-east-3.myhuaweicloud.com/iflyelf/flymon`）
+- **细节**：华为云 SWR 关闭 provenance/sbom 并输出 Docker 媒体类型以兼容；push 后自动将仓库设为公开
 
 ### Release（release.yml）
 
