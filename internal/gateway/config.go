@@ -41,6 +41,10 @@ type Config struct {
 	// 飞书
 	FeishuDomain string
 
+	// 飞书应用凭证回退（历史 mute token 未携带凭证时用于异步结果卡片推送）
+	FeishuAppID     string
+	FeishuAppSecret string
+
 	// 重试
 	RetryMaxAttempts   int
 	RetryDelayBase     int
@@ -144,6 +148,9 @@ func LoadConfig() *Config {
 		AIMaxTokens:        getenvInt("AI_MAX_TOKENS", 1500),
 
 		FeishuDomain: getenv("FEISHU_DOMAIN", "open.feishu.cn"),
+
+		FeishuAppID:     getenv("FEISHU_APP_ID", ""),
+		FeishuAppSecret: getenv("FEISHU_APP_SECRET", ""),
 
 		RetryMaxAttempts:   getenvInt("RETRY_MAX_ATTEMPTS", 3),
 		RetryDelayBase:     getenvInt("RETRY_DELAY_BASE", 2),

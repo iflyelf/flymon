@@ -169,6 +169,15 @@ spec:
             # 飞书
             - name: FEISHU_DOMAIN
               value: {{ .Values.gateway.config.feishuDomain | quote }}
+            # 飞书应用凭证回退（可选，历史 mute token 无凭证时用于异步结果卡片）
+            {{- if .Values.gateway.config.feishuAppId }}
+            - name: FEISHU_APP_ID
+              value: {{ .Values.gateway.config.feishuAppId | quote }}
+            {{- end }}
+            {{- if .Values.gateway.config.feishuAppSecret }}
+            - name: FEISHU_APP_SECRET
+              value: {{ .Values.gateway.config.feishuAppSecret | quote }}
+            {{- end }}
             # 重试
             - name: RETRY_MAX_ATTEMPTS
               value: {{ .Values.gateway.config.retryMaxAttempts | quote }}

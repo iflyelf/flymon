@@ -48,6 +48,41 @@ func (d *dedupCache) isDuplicate(key string) bool {
 	return false
 }
 
+// ── 飞书应用凭证回退 ──────────────────────────────────────────
+// 优先使用注册 token 中携带的 _feishu_app_id/_feishu_app_secret；
+// 历史 token（30 天 TTL）未携带凭证时，回退到「最近一次已知凭证」或
+// 环境变量 FEISHU_APP_ID / FEISHU_APP_SECRET，保证异步结果卡片仍可推送。
+var (
+	feishuCredsMu     sync.Mutex
+	feishuCredsID     string
+	feishuCredsSecret string
+)
+
+func rememberFeishuCreds(data map[string]interface{}) {
+	aid := getString(data, "_feishu_app_id")
+	sec := getString(data, "_feishu_app_secret")
+	if aid != "" && sec != "" {
+		feishuCredsMu.Lock()
+		feishuCredsID, feishuCredsSecret = aid, sec
+		feishuCredsMu.Unlock()
+	}
+}
+
+func (s *Server) resolveFeishuCreds(data map[string]interface{}) (string, string) {
+	aid := getString(data, "_feishu_app_id")
+	sec := getString(data, "_feishu_app_secret")
+	if aid != "" && sec != "" {
+		return aid, sec
+	}
+	feishuCredsMu.Lock()
+	cachedID, cachedSecret := feishuCredsID, feishuCredsSecret
+	feishuCredsMu.Unlock()
+	if cachedID != "" && cachedSecret != "" {
+		return cachedID, cachedSecret
+	}
+	return s.cfg.FeishuAppID, s.cfg.FeishuAppSecret
+}
+
 // Server 持有 gateway 各类依赖与线程安全去重缓存。
 type Server struct {
 	cfg    *Config
@@ -134,6 +169,7 @@ func (s *Server) handleMuteRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rememberFeishuCreds(data)
 	token := muteTokenStore.GenToken(fmt.Sprintf("%v", data["duration"]), data)
 	logger.Infof("注册屏蔽参数: token=%s, duration=%v", token, data["duration"])
 	writeJSON(w, 200, map[string]string{"token": token})
@@ -160,6 +196,7 @@ func (s *Server) handleAIRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rememberFeishuCreds(data)
 	token := aiTokenStore.GenToken("ai", data)
 	logger.Infof("注册 AI 分析参数: token=%s, rule=%v", token, data["rule_name"])
 	writeJSON(w, 200, map[string]string{"token": token})
@@ -186,6 +223,7 @@ func (s *Server) handleGroupChatRegister(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	rememberFeishuCreds(data)
 	token := groupChatTokenStore.GenToken("gc", data)
 	logger.Infof("注册拉群参数: token=%s, rule=%v", token, data["rule_name"])
 	writeJSON(w, 200, map[string]string{"token": token})
@@ -289,7 +327,7 @@ func (s *Server) handleFeishuCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3.3 屏蔽规则
-	s.handleMuteCallback(w, action)
+	s.handleMuteCallback(w, action, eventData, data)
 }
 
 func (s *Server) handleAIAnalysisCallback(w http.ResponseWriter, actionValue map[string]interface{}, eventData, data map[string]interface{}) {
@@ -326,8 +364,7 @@ func (s *Server) handleAIAnalysisCallback(w http.ResponseWriter, actionValue map
 		return
 	}
 
-	appID := getString(aiData, "_feishu_app_id")
-	appSecret := getString(aiData, "_feishu_app_secret")
+	appID, appSecret := s.resolveFeishuCreds(aiData)
 	if appID == "" || appSecret == "" {
 		writeJSON(w, 200, toastError("飞书凭证缺失"))
 		return
@@ -386,8 +423,7 @@ func (s *Server) handleGroupChatCallback(w http.ResponseWriter, action map[strin
 		return
 	}
 
-	appID := getString(gcData, "_feishu_app_id")
-	appSecret := getString(gcData, "_feishu_app_secret")
+	appID, appSecret := s.resolveFeishuCreds(gcData)
 	if appID == "" || appSecret == "" {
 		writeJSON(w, 200, toastError("飞书凭证缺失"))
 		return
@@ -522,7 +558,7 @@ func (s *Server) asyncDismissChat(gcToken, chatID, operatorOpenID, appID, appSec
 	s.feishu.SendCard(feishuToken, operatorOpenID, "open_id", successCard)
 }
 
-func (s *Server) handleMuteCallback(w http.ResponseWriter, action map[string]interface{}) {
+func (s *Server) handleMuteCallback(w http.ResponseWriter, action, eventData, data map[string]interface{}) {
 	optionEncoded, _ := action["option"].(string)
 	if optionEncoded == "" {
 		optionEncoded, _ = action["selected_value"].(string)
@@ -547,6 +583,44 @@ func (s *Server) handleMuteCallback(w http.ResponseWriter, action map[string]int
 		}
 	}
 
+	// 参数校验（错误同步返回，便于用户立即感知）
+	duration := getString(muteData, "duration")
+	groupID := int(getFloat(muteData, "group_id"))
+	triggerTime := int64(getFloat(muteData, "trigger_time"))
+	tagsArray := getStringSlice(muteData, "tags")
+	if duration == "" || groupID == 0 || triggerTime == 0 || len(tagsArray) == 0 {
+		writeJSON(w, 200, toastError("参数不完整"))
+		return
+	}
+
+	// 提取点击用户 open_id（用于异步推送结果卡片）
+	operator := getMap(eventData, "operator")
+	if len(operator) == 0 {
+		operator = getMap(data, "operator")
+	}
+	operatorOpenID := getString(operator, "open_id")
+	if operatorOpenID == "" {
+		operatorOpenID = getString(operator, "user_id")
+	}
+	if operatorOpenID == "" {
+		operatorOpenID, _ = data["open_id"].(string)
+	}
+
+	appID, appSecret := s.resolveFeishuCreds(muteData)
+	if appID == "" || appSecret == "" {
+		logger.Warningf("屏蔽参数缺少飞书凭证，将无法推送结果卡片")
+	}
+
+	logger.Infof("受理屏蔽请求: duration=%s, operator=%s", duration, operatorOpenID)
+
+	// 异步执行屏蔽：N9E API 调用 + 重试可能超过 3 秒，避免飞书卡片回调 200341
+	go s.asyncMute(muteData, operatorOpenID, appID, appSecret)
+
+	writeJSON(w, 200, toastInfo("⏳ 正在处理屏蔽，请稍候..."))
+}
+
+// processMuteAction 执行屏蔽/取消屏蔽业务逻辑，返回 (toastType, content)。
+func (s *Server) processMuteAction(muteData map[string]interface{}) (string, string) {
 	duration := getString(muteData, "duration")
 	groupID := int(getFloat(muteData, "group_id"))
 	groupName := getString(muteData, "group_name")
@@ -560,11 +634,6 @@ func (s *Server) handleMuteCallback(w http.ResponseWriter, action map[string]int
 		instances = getStringSlice(muteData, "instances")
 	}
 
-	if duration == "" || groupID == 0 || triggerTime == 0 || len(tagsArray) == 0 {
-		writeJSON(w, 200, toastError("参数不完整"))
-		return
-	}
-
 	tags := convertTagsToAPIFormat(tagsArray)
 	durationText := getDurationText(duration)
 
@@ -572,13 +641,11 @@ func (s *Server) handleMuteCallback(w http.ResponseWriter, action map[string]int
 	if duration == "unmute" {
 		matched, deleted, failed := s.findAndDeleteMuteRules(groupID, ruleName, instance, isAggregated, instances)
 		if matched == 0 {
-			writeJSON(w, 200, toastInfo("未找到该告警的屏蔽规则"))
+			return "info", "未找到该告警的屏蔽规则"
 		} else if failed == 0 {
-			writeJSON(w, 200, toastSuccess(fmt.Sprintf("✓ 已取消 %d 条屏蔽规则", deleted)))
-		} else {
-			writeJSON(w, 200, toastWarn(fmt.Sprintf("⚠ 删除部分成功: %d/%d", deleted, matched)))
+			return "success", fmt.Sprintf("✓ 已取消 %d 条屏蔽规则", deleted)
 		}
-		return
+		return "warning", fmt.Sprintf("⚠ 删除部分成功: %d/%d", deleted, matched)
 	}
 
 	// 创建屏蔽规则
@@ -587,9 +654,40 @@ func (s *Server) handleMuteCallback(w http.ResponseWriter, action map[string]int
 
 	success, msg := s.n9e.CreateMuteRule(groupID, note, tags, muteTimeType, triggerTime, etime)
 	if success {
-		writeJSON(w, 200, toastSuccess(fmt.Sprintf("✓ 告警屏蔽成功 (%s)", durationText)))
-	} else {
-		writeJSON(w, 200, toastError(fmt.Sprintf("✗ 屏蔽失败: %s", msg)))
+		return "success", fmt.Sprintf("✓ 告警屏蔽成功 (%s)", durationText)
+	}
+	return "error", fmt.Sprintf("✗ 屏蔽失败: %s", msg)
+}
+
+// asyncMute 后台执行屏蔽，并把结果卡片推送给点击者。
+func (s *Server) asyncMute(muteData map[string]interface{}, operatorOpenID, appID, appSecret string) {
+	toastType, content := s.processMuteAction(muteData)
+
+	// 无飞书凭证（如 base64 回退路径）时无法推送结果卡片，仅记录日志
+	if appID == "" || appSecret == "" || operatorOpenID == "" {
+		logger.Warningf("缺少飞书凭证或用户标识，跳过屏蔽结果推送: %s", content)
+		return
+	}
+
+	colorMap := map[string]string{"success": "green", "warning": "orange", "info": "blue", "error": "red"}
+	titleMap := map[string]string{"success": "✅ 告警屏蔽", "warning": "⚠️ 告警屏蔽", "info": "ℹ️ 告警屏蔽", "error": "❌ 告警屏蔽"}
+	color := colorMap[toastType]
+	if color == "" {
+		color = "blue"
+	}
+	title := titleMap[toastType]
+	if title == "" {
+		title = "告警屏蔽"
+	}
+	card := buildSimpleNotifyCard(title, content, color)
+
+	fsToken, err := s.feishu.GetAccessToken(appID, appSecret)
+	if err != nil {
+		logger.Errorf("获取飞书 token 失败，屏蔽结果卡片推送失败: %v", err)
+		return
+	}
+	if _, err := s.feishu.SendCard(fsToken, operatorOpenID, "open_id", card); err != nil {
+		logger.Errorf("推送屏蔽结果卡片失败: %v", err)
 	}
 }
 
