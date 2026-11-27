@@ -9,6 +9,7 @@ CREATE TABLE users (
     roles varchar(255) not null,
     contacts varchar(1024),
     maintainer int not null default 0,
+    disabled int not null default 0,
     belong varchar(16) not null default '',
     last_active_time bigint not null default 0,
     create_at bigint not null default 0,
@@ -731,7 +732,7 @@ CREATE TABLE datasource
     id serial,
     name varchar(191) not null default '',
     identifier varchar(255) not null default '',
-    description varchar(255) not null default '',
+    description text,
     category varchar(255) not null default '',
     plugin_id int  not null default 0,
     plugin_type varchar(255) not null default '',
@@ -920,12 +921,14 @@ CREATE TABLE source_token (
     source_type varchar(64) NOT NULL DEFAULT '',
     source_id varchar(255) NOT NULL DEFAULT '',
     token varchar(255) NOT NULL DEFAULT '',
+    note varchar(255) NOT NULL DEFAULT '',
     expire_at bigint NOT NULL DEFAULT 0,
     create_at bigint NOT NULL DEFAULT 0,
     create_by varchar(64) NOT NULL DEFAULT ''
 );
 
 CREATE INDEX idx_source_token_type_id_token ON source_token (source_type, source_id, token);
+CREATE INDEX idx_source_token_token ON source_token (token);
 
 CREATE TABLE notification_record (
     id BIGSERIAL PRIMARY KEY,

@@ -9,6 +9,7 @@ CREATE TABLE `users` (
     `roles` varchar(255) not null,
     `contacts` varchar(1024),
     `maintainer` tinyint(1) not null default 0,
+    `disabled` int not null default 0,
     `belong` varchar(16) not null default '',
     `last_active_time` bigint not null default 0,
     `create_at` bigint not null default 0,
@@ -584,7 +585,7 @@ CREATE TABLE `datasource`
 (
     `id` integer primary key autoincrement,
     `name` varchar(191) not null default '' unique,
-    `description` varchar(255) not null default '',
+    `description` text,
     `category` varchar(255) not null default '',
     `plugin_id` int unsigned not null default 0,
     `plugin_type` varchar(255) not null default '',
